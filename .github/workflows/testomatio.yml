@@ -79,7 +79,7 @@ jobs:
         with:
           node-version: "22"
       - name: Install dependencies
-        run: cd 'frontend' && if [ -f package-lock.json ]; then npm ci; else npm install; fi
+        run: cd 'frontend' && if [ -f package-lock.json ]; then npm ci || npm install; else npm install; fi
       - name: Unit / package tests
         run: cd 'frontend' && npm test --if-present
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -109,7 +109,7 @@ jobs:
         with:
           node-version: "22"
       - name: Install dependencies
-        run: cd 'e2e' && if [ -f package-lock.json ]; then npm ci; else npm install; fi
+        run: cd 'e2e' && if [ -f package-lock.json ]; then npm ci || npm install; else npm install; fi
       - name: Install Playwright browsers
         run: cd 'e2e' && npx playwright install --with-deps
       - name: Record tested commit and deployment identity

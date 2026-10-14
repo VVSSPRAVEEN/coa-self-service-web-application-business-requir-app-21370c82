@@ -4,7 +4,7 @@
   "semgrep": [],
   "ruff": [],
   "candidate": {
-    "tree_sha256": "f3ad3a4f27ceb0d76d6f41199cada6a7ab7e11c9f402cbac060fb462f5035670",
+    "tree_sha256": "49228cda460786ead68ccbb8c4a67ff6efa0bcc962214765e3c4f63353efac4a",
     "file_count": 148
   }
 }
