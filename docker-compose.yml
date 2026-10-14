@@ -326,7 +326,7 @@ services:
       AWS_DEFAULT_REGION: us-east-1
       PRESIGNED_URL_EXPIRY_SECONDS: "300"
       PRESIGNED_URL_MAX_EXPIRY_SECONDS: "900"
-    command: ["python", "-m", "pytest", "-q"]
+    command: ["python", "-m", "pytest", "-q", "-p", "no:cacheprovider"]
     depends_on:
       audit-db:
         condition: service_healthy
@@ -355,7 +355,7 @@ services:
       PYTHONUNBUFFERED: "1"
       ENVIRONMENT: local
       LOG_LEVEL: INFO
-    command: ["ruff", "check", "src/", "tests/"]
+    command: ["ruff", "check", "--no-cache", "src/", "tests/"]
     networks:
       - coa-net
 
