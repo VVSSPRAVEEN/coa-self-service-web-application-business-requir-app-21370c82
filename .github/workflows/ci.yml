@@ -25,7 +25,7 @@ jobs:
       - name: Install dependencies
         run: cd 'e2e' && if [ -f package-lock.json ]; then npm ci; else npm install; fi
       - name: Install Playwright browsers
-        run: cd 'e2e' && if grep -qE '"(playwright|@playwright/test)"' package.json 2>/dev/null; then npx playwright install --with-deps chromium; else echo 'No Playwright dependency; skipping browser install'; fi
+        run: cd 'e2e' && if grep -qE '"(playwright|@playwright/test)"' package.json 2>/dev/null; then npx playwright install --with-deps; else echo 'No Playwright dependency; skipping browser install'; fi
       - name: Build / typecheck
         run: cd 'e2e' && npm run build --if-present && npm run typecheck --if-present && npm run compile --if-present
       - name: E2E execution
@@ -42,8 +42,12 @@ jobs:
       - name: Install dependencies
         run: cd 'frontend' && if [ -f package-lock.json ]; then npm ci; else npm install; fi
       - name: Install Playwright browsers
-        run: cd 'frontend' && if grep -qE '"(playwright|@playwright/test)"' package.json 2>/dev/null; then npx playwright install --with-deps chromium; else echo 'No Playwright dependency; skipping browser install'; fi
+        run: cd 'frontend' && if grep -qE '"(playwright|@playwright/test)"' package.json 2>/dev/null; then npx playwright install --with-deps; else echo 'No Playwright dependency; skipping browser install'; fi
       - name: Build / typecheck
+        env:
+          VITE_AWS_USER_POOL_ID: ""
+          VITE_AWS_USER_POOL_CLIENT_ID: ""
+          VITE_AUTH_STUB_ENABLED: "true"
         run: cd 'frontend' && npm run build --if-present && npm run typecheck --if-present && npm run compile --if-present
       - name: Unit / package tests
         run: cd 'frontend' && npm test --if-present
@@ -98,7 +102,7 @@ jobs:
       - name: Boot integration stack
         run: docker compose -f docker-compose.yml up -d --wait --wait-timeout 120
       - name: Integration E2E - e2e
-        run: cd 'e2e' && if [ -f package-lock.json ]; then npm ci; else npm install; fi && if grep -qE '"(playwright|@playwright/test)"' package.json 2>/dev/null; then npx playwright install --with-deps chromium; fi && npm test
+        run: cd 'e2e' && if [ -f package-lock.json ]; then npm ci; else npm install; fi && if grep -qE '"(playwright|@playwright/test)"' package.json 2>/dev/null; then npx playwright install --with-deps; fi && npm test
       - name: Verify containers stay running
         run: |
           docker compose -f docker-compose.yml ps

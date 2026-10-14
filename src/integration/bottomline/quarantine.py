@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Error quarantine handling for rejected Bottomline inbound files (FR17).
 
 A file that fails parsing or record-level validation is never dropped silently:
