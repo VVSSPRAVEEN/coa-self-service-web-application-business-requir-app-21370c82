@@ -48,9 +48,10 @@ jobs:
           python -m pip install --upgrade pip pytest
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
       - name: Run tests (JUnit XML)
+        env:
+          TESTOMAT_GREP: ${{ github.event.inputs.grep }}
         run: |
-          GREP="${{ github.event.inputs.grep }}"
-          if [ -n "$GREP" ]; then python -m pytest -q -k "$GREP" --junit-xml=test-results/python.xml; else python -m pytest -q --junit-xml=test-results/python.xml; fi
+          if [ -n "$TESTOMAT_GREP" ]; then python -m pytest -q -k "$TESTOMAT_GREP" --junit-xml=test-results/python.xml; else python -m pytest -q --junit-xml=test-results/python.xml; fi
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "22"
@@ -112,16 +113,18 @@ jobs:
       - name: Install Playwright browsers
         run: cd 'e2e' && npx playwright install --with-deps chromium
       - name: Record tested commit and deployment identity
+        env:
+          TESTOMAT_BASE_URL: ${{ github.event.inputs.base_url }}
         run: |
           mkdir -p test-results
-          printf '{"tested_commit":"%s","base_url":"%s","observed_at":"%s"}\n' "$GITHUB_SHA" "${{ github.event.inputs.base_url }}" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > test-results/deployment-identity.json
-          if [ -n "${{ github.event.inputs.base_url }}" ]; then curl -fsS "${{ github.event.inputs.base_url }}/health" -o test-results/deployed-health.json || echo '{"health":"unreachable"}' > test-results/deployed-health.json; fi
+          printf '{"tested_commit":"%s","base_url":"%s","observed_at":"%s"}\n' "$GITHUB_SHA" "$TESTOMAT_BASE_URL" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > test-results/deployment-identity.json
+          if [ -n "$TESTOMAT_BASE_URL" ]; then curl -fsS "$TESTOMAT_BASE_URL/health" -o test-results/deployed-health.json || echo '{"health":"unreachable"}' > test-results/deployed-health.json; fi
       - name: Acceptance tests against the deployed URL
         env:
           PLAYWRIGHT_JUNIT_OUTPUT_NAME: test-results/e2e.xml
+          TESTOMAT_GREP: ${{ github.event.inputs.grep }}
         run: |
-          GREP="${{ github.event.inputs.grep }}"
-          if [ -n "$GREP" ]; then cd 'e2e' && npx playwright test --reporter=junit --grep "$GREP"; else cd 'e2e' && npx playwright test --reporter=junit; fi
+          if [ -n "$TESTOMAT_GREP" ]; then cd 'e2e' && npx playwright test --reporter=junit --grep "$TESTOMAT_GREP"; else cd 'e2e' && npx playwright test --reporter=junit; fi
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "22"
