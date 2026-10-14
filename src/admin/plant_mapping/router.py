@@ -13,8 +13,6 @@ The router is the only place that turns a domain failure into a status code:
 
 from __future__ import annotations
 
-from typing import List, Optional
-
 from fastapi import APIRouter, Depends, FastAPI, HTTPException
 
 from src.admin.plant_mapping.models import (
@@ -32,7 +30,7 @@ router = APIRouter(prefix="/admin/plant-mappings", tags=["Plant Mapping Admin"])
 
 __all__ = ["get_plant_mapping_service", "register_plant_mappings", "router"]
 
-_service_instance: Optional[PlantMappingService] = None
+_service_instance: PlantMappingService | None = None
 
 
 def get_plant_mapping_service() -> PlantMappingService:
@@ -63,18 +61,18 @@ async def create_plant_mapping(
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
-@router.get("", response_model=List[PlantMappingResponse])
+@router.get("", response_model=list[PlantMappingResponse])
 async def list_plant_mappings(
     service: PlantMappingService = SERVICE_DEPENDENCY,
-) -> List[PlantMappingResponse]:
+) -> list[PlantMappingResponse]:
     return await service.list_mappings()
 
 
-@router.get("/by-source/{source_plant_id}", response_model=List[PlantMappingResponse])
+@router.get("/by-source/{source_plant_id}", response_model=list[PlantMappingResponse])
 async def list_by_source_plant(
     source_plant_id: str,
     service: PlantMappingService = SERVICE_DEPENDENCY,
-) -> List[PlantMappingResponse]:
+) -> list[PlantMappingResponse]:
     return await service.list_by_source_plant(source_plant_id)
 
 

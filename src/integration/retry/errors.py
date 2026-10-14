@@ -6,13 +6,11 @@ from __future__ import annotations
 class TransientError(Exception):
     """An error that may succeed on retry (e.g., network timeout, 503)."""
 
-    pass
 
 
 class UnrecoverableError(Exception):
     """An error that will never succeed on retry (e.g., validation failure, 400)."""
 
-    pass
 
 
 def classify_error(exc: BaseException) -> str:

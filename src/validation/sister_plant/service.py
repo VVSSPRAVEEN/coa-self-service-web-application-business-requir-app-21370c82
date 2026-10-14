@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Callable, List, Optional
+from collections.abc import Callable
 
 from fastapi import HTTPException, status
 
@@ -12,7 +12,7 @@ from src.validation.sister_plant.models import (
 from src.validation.sister_plant.validator import SisterPlantValidator
 
 # Signature of the injected sister-plant lookup: plant id -> mapped plant ids.
-GetSisterPlantsFn = Callable[[str], List[str]]
+GetSisterPlantsFn = Callable[[str], list[str]]
 
 
 class SisterPlantPrintService:
@@ -20,8 +20,8 @@ class SisterPlantPrintService:
 
     def __init__(
         self,
-        validator: Optional[SisterPlantValidator] = None,
-        get_sister_plants_fn: Optional[GetSisterPlantsFn] = None,
+        validator: SisterPlantValidator | None = None,
+        get_sister_plants_fn: GetSisterPlantsFn | None = None,
     ) -> None:
         self._validator = validator or SisterPlantValidator(
             get_sister_plants_fn=get_sister_plants_fn
@@ -38,5 +38,5 @@ class SisterPlantPrintService:
             )
         return result
 
-    async def get_audit_log(self) -> List[CrossPlantPrintAuditEntry]:
+    async def get_audit_log(self) -> list[CrossPlantPrintAuditEntry]:
         return self._validator.get_audit_log()

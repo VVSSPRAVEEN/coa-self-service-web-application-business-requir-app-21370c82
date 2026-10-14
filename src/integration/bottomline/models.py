@@ -6,7 +6,6 @@ import hashlib
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Optional
 
 
 class IngestionStatus(str, Enum):
@@ -31,8 +30,8 @@ class BottomlineRawRecord:
     test_code: str
     test_result: str
     test_unit: str
-    specification_min: Optional[float]
-    specification_max: Optional[float]
+    specification_min: float | None
+    specification_max: float | None
     recorded_at: datetime
     raw_line: str
     line_number: int
@@ -48,8 +47,8 @@ class CostObjectLineItem:
     test_code: str
     test_result: str
     test_unit: str
-    specification_min: Optional[float]
-    specification_max: Optional[float]
+    specification_min: float | None
+    specification_max: float | None
     recorded_at: datetime
     source_batch_id: str
     source_line_number: int
@@ -65,7 +64,7 @@ class IngestedFile:
     status: IngestionStatus
     record_count: int
     ingested_at: datetime
-    error_reason: Optional[str] = None
+    error_reason: str | None = None
 
 
 @dataclass

@@ -11,21 +11,22 @@ mapping can be passed straight through to the Mule API client.
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterable, Mapping, Sequence
 from datetime import date, datetime
-from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
 __all__ = [
-    "COAFilterValidationError",
     "FILTER_FIELDS",
-    "VALID_STATUSES",
     "STATUS_ALIASES",
-    "normalize_status",
-    "normalize_date",
-    "parse_filters",
-    "matches_filters",
+    "VALID_STATUSES",
+    "COAFilterValidationError",
     "apply_filters",
+    "matches_filters",
+    "normalize_date",
+    "normalize_status",
+    "parse_filters",
 ]
 
 FILTER_FIELDS: Sequence[str] = ("q", "plant", "status", "start_date", "end_date")
@@ -51,7 +52,7 @@ class COAFilterValidationError(ValueError):
     """Raised when a filter value cannot be coerced into a supported type."""
 
 
-def _clean(value: Any) -> Optional[str]:
+def _clean(value: Any) -> str | None:
     """Return ``value`` as a stripped string, or ``None`` when it is empty."""
     if value is None:
         return None
@@ -59,7 +60,7 @@ def _clean(value: Any) -> Optional[str]:
     return text or None
 
 
-def normalize_status(value: Any) -> Optional[str]:
+def normalize_status(value: Any) -> str | None:
     """Return the canonical completion status for ``value`` (or ``None``).
 
     Aliases such as ``complete``, ``incomplete`` or ``error`` are folded onto
@@ -75,7 +76,7 @@ def normalize_status(value: Any) -> Optional[str]:
     return STATUS_ALIASES.get(key, key)
 
 
-def normalize_date(value: Any, *, field_name: str = "date") -> Optional[str]:
+def normalize_date(value: Any, *, field_name: str = "date") -> str | None:
     """Coerce ``value`` into an ISO ``YYYY-MM-DD`` string, or ``None``.
 
     ``date``/``datetime`` objects and ISO-like strings are accepted.  A value
@@ -100,7 +101,7 @@ def normalize_date(value: Any, *, field_name: str = "date") -> Optional[str]:
     except ValueError:
         pass
     try:
-        return datetime.fromisoformat(text.replace("Z", "+00:00")).date().isoformat()
+        return datetime.fromisoformat(text).date().isoformat()
     except ValueError:
         logger.warning("Ignoring unparsable %s filter value: %r", field_name, value)
         return None
@@ -108,17 +109,17 @@ def normalize_date(value: Any, *, field_name: str = "date") -> Optional[str]:
 
 def parse_filters(
     *,
-    q: Optional[str] = None,
-    plant: Optional[str] = None,
-    status: Optional[str] = None,
-    start_date: Optional[Any] = None,
-    end_date: Optional[Any] = None,
-    search: Optional[str] = None,
-    plant_code: Optional[str] = None,
-    completion_status: Optional[str] = None,
-    date_from: Optional[Any] = None,
-    date_to: Optional[Any] = None,
-) -> Dict[str, Any]:
+    q: str | None = None,
+    plant: str | None = None,
+    status: str | None = None,
+    start_date: Any | None = None,
+    end_date: Any | None = None,
+    search: str | None = None,
+    plant_code: str | None = None,
+    completion_status: str | None = None,
+    date_from: Any | None = None,
+    date_to: Any | None = None,
+) -> dict[str, Any]:
     """Build the canonical filter mapping consumed by the COA service layer.
 
     Only the keys defined by :data:`FILTER_FIELDS` can appear in the result,
@@ -146,7 +147,7 @@ def parse_filters(
             normalized_end,
         )
 
-    filters: Dict[str, Any] = {}
+    filters: dict[str, Any] = {}
     if normalized_q:
         filters["q"] = normalized_q
     if normalized_plant:
@@ -188,9 +189,8 @@ def matches_filters(coa: Any, filters: Mapping[str, Any]) -> bool:
             return False
 
     status = filters.get("status")
-    if status:
-        if normalize_status(_read(coa, "status")) != status:
-            return False
+    if status and normalize_status(_read(coa, "status")) != status:
+        return False
 
     start = filters.get("start_date")
     end = filters.get("end_date")
@@ -205,7 +205,7 @@ def matches_filters(coa: Any, filters: Mapping[str, Any]) -> bool:
     return True
 
 
-def apply_filters(items: Iterable[Any], filters: Mapping[str, Any]) -> List[Any]:
+def apply_filters(items: Iterable[Any], filters: Mapping[str, Any]) -> list[Any]:
     """Return the subset of ``items`` that satisfy ``filters``."""
     if not filters:
         return list(items)

@@ -6,7 +6,7 @@ import argparse
 import json
 import os
 import sys
-from typing import List, Optional, Sequence
+from collections.abc import Sequence
 
 from src.audit.trail.models import AuditLogEntry
 from src.audit.trail.repository import AuditRepository
@@ -35,7 +35,7 @@ def cmd_verify(service: AuditTrailService) -> int:
 
 def cmd_list(
     service: AuditTrailService,
-    resource_id: Optional[str] = None,
+    resource_id: str | None = None,
 ) -> int:
     """List audit entries, optionally filtered by resource."""
     if resource_id:
@@ -56,10 +56,10 @@ def cmd_list(
 
 def cmd_export_json(
     service: AuditTrailService,
-    output_path: Optional[str] = None,
+    output_path: str | None = None,
 ) -> int:
     """Export audit trail as JSON."""
-    entries: List[AuditLogEntry] = service.get_all_events()
+    entries: list[AuditLogEntry] = service.get_all_events()
     data = [entry.model_dump(mode="json") for entry in entries]
     json_str = json.dumps(data, indent=2, default=str)
 
@@ -74,7 +74,7 @@ def cmd_export_json(
     return 0
 
 
-def main(argv: Optional[Sequence[str]] = None) -> int:
+def main(argv: Sequence[str] | None = None) -> int:
     """Main CLI entry point for audit trail administration."""
     parser = argparse.ArgumentParser(
         prog="audit-trail-admin",

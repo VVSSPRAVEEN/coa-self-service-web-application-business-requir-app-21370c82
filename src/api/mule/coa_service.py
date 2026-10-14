@@ -4,9 +4,9 @@ import json
 import logging
 import os
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
-from typing import Any, Optional
+from typing import Any
 
 from src.audit.trail.models import AuditEventType
 from src.audit.trail.repository import AuditRepository
@@ -27,8 +27,8 @@ _TRAIL_EVENT_TYPES = {
     GENERATION_REQUEST: AuditEventType.GENERATION,
 }
 
-_audit_repository: Optional[AuditRepository] = None
-_audit_service: Optional[AuditTrailService] = None
+_audit_repository: AuditRepository | None = None
+_audit_service: AuditTrailService | None = None
 
 
 def _get_audit_service() -> AuditTrailService:
@@ -65,18 +65,18 @@ class CompletionStatus(str, Enum):
 @dataclass
 class COARecord:
     coa_number: str
-    customer_id: Optional[str] = None
-    plant_code: Optional[str] = None
-    lot_number: Optional[str] = None
-    product_code: Optional[str] = None
-    issue_date: Optional[str] = None
-    completion_status: Optional[CompletionStatus] = None
-    status: Optional[str] = None
-    file_size_bytes: Optional[int] = None
-    test_results: Optional[Any] = None
-    created_at: Optional[datetime] = None
-    generated_at: Optional[datetime] = None
-    completed_at: Optional[str] = None
+    customer_id: str | None = None
+    plant_code: str | None = None
+    lot_number: str | None = None
+    product_code: str | None = None
+    issue_date: str | None = None
+    completion_status: CompletionStatus | None = None
+    status: str | None = None
+    file_size_bytes: int | None = None
+    test_results: Any | None = None
+    created_at: datetime | None = None
+    generated_at: datetime | None = None
+    completed_at: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -98,24 +98,24 @@ class COARecord:
 
 @dataclass
 class COASearchRequest:
-    customer_id: Optional[str] = None
-    plant_code: Optional[str] = None
-    coa_number: Optional[str] = None
-    lot_number: Optional[str] = None
-    start_date: Optional[str] = None
-    end_date: Optional[str] = None
-    completion_status: Optional[CompletionStatus] = None
+    customer_id: str | None = None
+    plant_code: str | None = None
+    coa_number: str | None = None
+    lot_number: str | None = None
+    start_date: str | None = None
+    end_date: str | None = None
+    completion_status: CompletionStatus | None = None
     page: int = 1
     page_size: int = 25
 
 
 @dataclass
 class COAFilter:
-    q: Optional[str] = None
-    plant: Optional[str] = None
-    start_date: Optional[str] = None
-    end_date: Optional[str] = None
-    status: Optional[str] = None
+    q: str | None = None
+    plant: str | None = None
+    start_date: str | None = None
+    end_date: str | None = None
+    status: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         result: dict[str, Any] = {}
@@ -132,7 +132,7 @@ class COAFilter:
         return result
 
     @classmethod
-    def from_search_request(cls, request: COASearchRequest) -> "COAFilter":
+    def from_search_request(cls, request: COASearchRequest) -> COAFilter:
         return cls(
             q=request.coa_number or request.customer_id,
             plant=request.plant_code,
@@ -146,7 +146,7 @@ class COAFilter:
 class MuleApiError(Exception):
     code: str
     message: str
-    details: Optional[dict[str, Any]] = None
+    details: dict[str, Any] | None = None
 
     def __post_init__(self) -> None:
         Exception.__init__(self, f"{self.code}: {self.message}")
@@ -161,7 +161,7 @@ def _record_audit_event(
     actor: str,
     action: str,
     resource: str,
-    metadata: Optional[dict[str, Any]] = None,
+    metadata: dict[str, Any] | None = None,
 ) -> None:
     """Append one event to the immutable audit trail (FR12).
 
@@ -214,7 +214,7 @@ def log_access(
     actor: str,
     action: str,
     resource: str,
-    metadata: Optional[dict[str, Any]] = None,
+    metadata: dict[str, Any] | None = None,
 ) -> None:
     """Record a COA read/access event into the immutable audit trail (FR12)."""
     _record_audit_event(
@@ -230,7 +230,7 @@ def log_generation(
     actor: str,
     resource: str,
     action: str,
-    metadata: Optional[dict[str, Any]] = None,
+    metadata: dict[str, Any] | None = None,
 ) -> None:
     """Record a COA generation event into the immutable audit trail (FR12)."""
     _record_audit_event(
@@ -242,17 +242,17 @@ def log_generation(
     )
 
 
-def _parse_timestamp(value: Optional[str]) -> Optional[datetime]:
+def _parse_timestamp(value: str | None) -> datetime | None:
     """Parse an ISO-8601 timestamp from Mule into an aware UTC datetime."""
     if not value:
         return None
     parsed = datetime.fromisoformat(value)
     if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone(timezone.utc)
+        return parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
 
 
-def _parse_status(value: Optional[str]) -> Optional[CompletionStatus]:
+def _parse_status(value: str | None) -> CompletionStatus | None:
     if not value:
         return None
     try:
@@ -323,13 +323,13 @@ class COAService:
         )
         return records
 
-    async def get_coa_by_number(self, coa_number: str) -> Optional[COARecord]:
+    async def get_coa_by_number(self, coa_number: str) -> COARecord | None:
         path = self._build_detail_path(coa_number)
         try:
             response = self._client.get(path)
             raw = self._client.ensure_ok(response)
             data = raw.json()
-        except Exception:
+        except Exception:  # noqa: BLE001 - transport/parse failures degrade to no record
             return None
 
         record = COARecord(
@@ -393,7 +393,6 @@ class COAService:
 class MuleCOAService(COAService):
     """Named alias retained for callers that import the Mule-specific class."""
 
-    pass
 
 
 def get_coa_service() -> COAService:
@@ -411,7 +410,7 @@ def get_coa_service() -> COAService:
         def __init__(self, base_url: str) -> None:
             self._base_url = base_url
 
-        def _fail(self, method: str, path: str) -> "MuleApiError":
+        def _fail(self, method: str, path: str) -> MuleApiError:
             return MuleApiError(
                 code="mule_not_configured",
                 message=(

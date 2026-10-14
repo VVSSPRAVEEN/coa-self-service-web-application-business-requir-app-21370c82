@@ -23,8 +23,8 @@ import base64
 import logging
 import mimetypes
 import uuid
-from datetime import datetime, timezone
-from typing import Dict, List, Optional, Protocol, Union
+from datetime import UTC, datetime
+from typing import Protocol
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +38,7 @@ __all__ = [
 ]
 
 # Binary payload carried by a single attachment entry.
-AttachmentContent = Union[bytes, bytearray, str]
+AttachmentContent = bytes | bytearray | str
 
 _MIME_DATE_FORMAT = "%a, %d %b %Y %H:%M:%S +0000"
 _MESSAGE_ID_DOMAIN = "ventura-coa.local"
@@ -68,7 +68,7 @@ def _wrap_base64(payload: bytes) -> str:
     )
 
 
-def _as_bytes(content: Optional[AttachmentContent]) -> bytes:
+def _as_bytes(content: AttachmentContent | None) -> bytes:
     """Normalise an attachment payload to bytes."""
     if isinstance(content, bytes):
         return content
@@ -87,7 +87,7 @@ def _safe_filename(name: str) -> str:
 
 def _percent_encode(value: str) -> str:
     """Percent-encode ``value`` for an RFC 6266 ``filename*`` parameter."""
-    chars: List[str] = []
+    chars: list[str] = []
     for byte in value.encode("utf-8"):
         char = chr(byte)
         chars.append(char if char in _UNRESERVED else f"%{byte:02X}")
@@ -111,7 +111,7 @@ def _alternative_block(
 ) -> str:
     """Build a ``multipart/alternative`` part (text, then HTML when given)."""
     boundary = uuid.uuid4().hex
-    chunks: List[str] = [
+    chunks: list[str] = [
         prefix,
         f'Content-Type: multipart/alternative; boundary="{boundary}"',
         "\r\n\r\n",
@@ -125,7 +125,7 @@ def _alternative_block(
     return "".join(chunks)
 
 
-def _attachment_block(attachment: Dict[str, AttachmentContent]) -> str:
+def _attachment_block(attachment: dict[str, AttachmentContent]) -> str:
     """Build one ``base64`` attachment part for a filename/content mapping."""
     filename = _safe_filename(str(attachment.get("filename") or "attachment"))
     payload = _as_bytes(attachment.get("content"))
@@ -146,14 +146,14 @@ def _attachment_block(attachment: Dict[str, AttachmentContent]) -> str:
 
 def build_mime_message(
     sender: str,
-    recipients: List[str],
+    recipients: list[str],
     subject: str,
     body_text: str,
-    body_html: Optional[str] = None,
-    attachments: Optional[List[Dict[str, AttachmentContent]]] = None,
+    body_html: str | None = None,
+    attachments: list[dict[str, AttachmentContent]] | None = None,
 ) -> str:
     """Assemble the complete raw message: headers, blank line, then body."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     attachment_entries = list(attachments or [])
     headers = [
         f"Date: {now.strftime(_MIME_DATE_FORMAT)}",
@@ -165,7 +165,7 @@ def build_mime_message(
         "MIME-Version: 1.0",
     ]
 
-    parts: List[str] = []
+    parts: list[str] = []
     if attachment_entries:
         boundary = uuid.uuid4().hex
         headers.append(f'Content-Type: multipart/mixed; boundary="{boundary}"')
@@ -197,11 +197,11 @@ class MailTransport(Protocol):
     def send(
         self,
         sender: str,
-        recipients: List[str],
+        recipients: list[str],
         subject: str,
         body_text: str,
-        body_html: Optional[str] = None,
-        attachments: Optional[List[Dict[str, AttachmentContent]]] = None,
+        body_html: str | None = None,
+        attachments: list[dict[str, AttachmentContent]] | None = None,
     ) -> bool:
         """Send an email message.
 
@@ -226,8 +226,8 @@ class SmtpMailTransport:
         self,
         host: str,
         port: int,
-        username: Optional[str] = None,
-        password: Optional[str] = None,
+        username: str | None = None,
+        password: str | None = None,
         use_tls: bool = True,
         timeout: float = 30.0,
     ) -> None:
@@ -241,11 +241,11 @@ class SmtpMailTransport:
     def send(
         self,
         sender: str,
-        recipients: List[str],
+        recipients: list[str],
         subject: str,
         body_text: str,
-        body_html: Optional[str] = None,
-        attachments: Optional[List[Dict[str, AttachmentContent]]] = None,
+        body_html: str | None = None,
+        attachments: list[dict[str, AttachmentContent]] | None = None,
     ) -> bool:
         """Send email via SMTP."""
         # Imported here, not at module scope: ``smtplib`` pulls in the
@@ -305,16 +305,16 @@ class DryRunTransport:
     """
 
     def __init__(self) -> None:
-        self.outbox: List[Dict[str, object]] = []
+        self.outbox: list[dict[str, object]] = []
 
     def send(
         self,
         sender: str,
-        recipients: List[str],
+        recipients: list[str],
         subject: str,
         body_text: str,
-        body_html: Optional[str] = None,
-        attachments: Optional[List[Dict[str, AttachmentContent]]] = None,
+        body_html: str | None = None,
+        attachments: list[dict[str, AttachmentContent]] | None = None,
     ) -> bool:
         """Render the message into the outbox and report it as sent."""
         raw_message = build_mime_message(
@@ -347,7 +347,7 @@ class MockMailTransport:
     """In-memory mock transport for testing without live infrastructure."""
 
     def __init__(self) -> None:
-        self.sent_messages: List[Dict[str, object]] = []
+        self.sent_messages: list[dict[str, object]] = []
         self._should_fail = False
 
     def set_should_fail(self, should_fail: bool) -> None:
@@ -357,11 +357,11 @@ class MockMailTransport:
     def send(
         self,
         sender: str,
-        recipients: List[str],
+        recipients: list[str],
         subject: str,
         body_text: str,
-        body_html: Optional[str] = None,
-        attachments: Optional[List[Dict[str, AttachmentContent]]] = None,
+        body_html: str | None = None,
+        attachments: list[dict[str, AttachmentContent]] | None = None,
     ) -> bool:
         """Record the message without actually sending."""
         if self._should_fail:

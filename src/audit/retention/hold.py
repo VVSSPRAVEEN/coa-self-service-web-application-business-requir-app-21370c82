@@ -4,8 +4,7 @@ from __future__ import annotations
 
 import threading
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Dict, List, Optional, Set
+from datetime import UTC, datetime
 
 
 @dataclass
@@ -16,16 +15,16 @@ class LegalHoldRecord:
     reason: str
     placed_by: str
     placed_at: datetime = field(
-        default_factory=lambda: datetime.now(timezone.utc)
+        default_factory=lambda: datetime.now(UTC)
     )
-    released_at: Optional[datetime] = None
-    released_by: Optional[str] = None
+    released_at: datetime | None = None
+    released_by: str | None = None
     is_active: bool = True
 
     def release(self, released_by: str) -> None:
         """Mark this hold as released."""
         self.is_active = False
-        self.released_at = datetime.now(timezone.utc)
+        self.released_at = datetime.now(UTC)
         self.released_by = released_by
 
 
@@ -37,7 +36,7 @@ class LegalHoldManager:
     """
 
     def __init__(self) -> None:
-        self._holds: Dict[str, List[LegalHoldRecord]] = {}
+        self._holds: dict[str, list[LegalHoldRecord]] = {}
         self._lock = threading.Lock()
 
     def place_hold(
@@ -45,7 +44,7 @@ class LegalHoldManager:
         resource_id: str,
         reason: str,
         placed_by: str,
-        allowed_reasons: Optional[Set[str]] = None,
+        allowed_reasons: set[str] | None = None,
     ) -> LegalHoldRecord:
         """Place a legal hold on a resource.
 
@@ -84,7 +83,7 @@ class LegalHoldManager:
         self,
         resource_id: str,
         released_by: str,
-        reason: Optional[str] = None,
+        reason: str | None = None,
     ) -> int:
         """Release active legal holds on a resource.
 
@@ -100,10 +99,9 @@ class LegalHoldManager:
         with self._lock:
             holds = self._holds.get(resource_id, [])
             for hold in holds:
-                if hold.is_active:
-                    if reason is None or hold.reason == reason:
-                        hold.release(released_by)
-                        released_count += 1
+                if hold.is_active and reason is None or hold.reason == reason:
+                    hold.release(released_by)
+                    released_count += 1
         return released_count
 
     def is_on_hold(self, resource_id: str) -> bool:
@@ -112,13 +110,13 @@ class LegalHoldManager:
             holds = self._holds.get(resource_id, [])
             return any(h.is_active for h in holds)
 
-    def get_active_holds(self, resource_id: str) -> List[LegalHoldRecord]:
+    def get_active_holds(self, resource_id: str) -> list[LegalHoldRecord]:
         """Get all active legal holds for a resource."""
         with self._lock:
             holds = self._holds.get(resource_id, [])
             return [h for h in holds if h.is_active]
 
-    def get_all_held_resources(self) -> Set[str]:
+    def get_all_held_resources(self) -> set[str]:
         """Return all resource IDs that currently have active holds."""
         with self._lock:
             return {
@@ -127,7 +125,7 @@ class LegalHoldManager:
                 if any(h.is_active for h in holds)
             }
 
-    def get_hold_history(self, resource_id: str) -> List[LegalHoldRecord]:
+    def get_hold_history(self, resource_id: str) -> list[LegalHoldRecord]:
         """Return full hold history including released holds."""
         with self._lock:
             return list(self._holds.get(resource_id, []))

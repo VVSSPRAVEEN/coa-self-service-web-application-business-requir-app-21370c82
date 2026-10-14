@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
-from typing import Optional
 
 from pydantic import BaseModel, Field
 
@@ -34,10 +33,10 @@ class AuditLogEntry(BaseModel):
     event_type: AuditEventType
     user_sub: str = Field(..., description="Subject identifier of the actor")
     resource_id: str = Field(..., description="Identifier of the target COA or resource")
-    details: Optional[str] = None
-    ip_address: Optional[str] = None
+    details: str | None = None
+    ip_address: str | None = None
     timestamp: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc)
+        default_factory=lambda: datetime.now(UTC)
     )
     previous_hash: str = Field(
         default="GENESIS",

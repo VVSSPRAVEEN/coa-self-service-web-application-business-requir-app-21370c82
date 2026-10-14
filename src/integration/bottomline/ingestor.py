@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
-from typing import Optional
+from datetime import UTC, datetime
 
 from src.integration.bottomline.models import (
     AuditEntry,
@@ -36,8 +35,8 @@ class BottomlineIngestor:
     def __init__(
         self,
         repository: IngestionRepository,
-        poller: Optional[SftpPoller] = None,
-        quarantine_dir: Optional[str] = None,
+        poller: SftpPoller | None = None,
+        quarantine_dir: str | None = None,
     ) -> None:
         self._repository = repository
         self._poller = poller
@@ -56,7 +55,7 @@ class BottomlineIngestor:
         file_name = entry.file_name
         content = entry.content
         checksum = compute_checksum(content)
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
 
         self._repository.add_audit_entry(
             AuditEntry(

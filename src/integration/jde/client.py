@@ -36,17 +36,19 @@ from __future__ import annotations
 
 import json
 import os
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Any, Callable, Mapping, Optional, Protocol, Sequence
+from typing import Any, Protocol
 from urllib import error as urllib_error
 from urllib import parse as urllib_parse
 from urllib import request as urllib_request
 
 __all__ = [
     "DEFAULT_JDE_TIMEOUT_SECONDS",
+    "JDE_BASE_URL_ENV",
+    "CoaStatusPath",
     "ExpectedFieldProvider",
     "HttpJSONTransport",
-    "JDE_BASE_URL_ENV",
     "JDEConfigurationError",
     "JDEError",
     "JDEPayloadError",
@@ -55,7 +57,6 @@ __all__ = [
     "RecordedRequest",
     "RecordingTransport",
     "TestFieldsPath",
-    "CoaStatusPath",
     "coerce_field_names",
 ]
 
@@ -96,7 +97,7 @@ class JDETransport(Protocol):
     to know which transport it holds.
     """
 
-    def get_json(self, path: str, params: Optional[Mapping[str, Any]] = None) -> Any:
+    def get_json(self, path: str, params: Mapping[str, Any] | None = None) -> Any:
         """Return the decoded JSON body of one JDE read.
 
         Args:
@@ -154,7 +155,7 @@ class HttpJSONTransport:
         """The configured JDE root URL, without a trailing slash."""
         return self._base_url
 
-    def get_json(self, path: str, params: Optional[Mapping[str, Any]] = None) -> Any:
+    def get_json(self, path: str, params: Mapping[str, Any] | None = None) -> Any:
         """Return the decoded JSON body of ``GET <base_url>/<path>``.
 
         Raises:
@@ -193,9 +194,9 @@ class HttpJSONTransport:
     def from_env(
         cls,
         *,
-        env: Optional[Mapping[str, str]] = None,
+        env: Mapping[str, str] | None = None,
         timeout: float = DEFAULT_JDE_TIMEOUT_SECONDS,
-    ) -> "HttpJSONTransport":
+    ) -> HttpJSONTransport:
         """Build the transport from ``JDE_BASE_URL``.
 
         Args:
@@ -228,9 +229,9 @@ class RecordingTransport:
 
     def __init__(
         self,
-        responses: Optional[Mapping[str, Any]] = None,
+        responses: Mapping[str, Any] | None = None,
         *,
-        error: Optional[BaseException] = None,
+        error: BaseException | None = None,
     ) -> None:
         self._responses: dict[str, list[Any]] = {}
         self._error = error
@@ -238,12 +239,12 @@ class RecordingTransport:
         for path, payload in (responses or {}).items():
             self.queue(path, payload)
 
-    def queue(self, path: str, payload: Any) -> "RecordingTransport":
+    def queue(self, path: str, payload: Any) -> RecordingTransport:
         """Append ``payload`` to the queue answered for ``path``."""
         self._responses.setdefault(str(path), []).append(payload)
         return self
 
-    def fail_with(self, error: BaseException) -> "RecordingTransport":
+    def fail_with(self, error: BaseException) -> RecordingTransport:
         """Make every subsequent read raise ``error``."""
         self._error = error
         return self
@@ -253,11 +254,11 @@ class RecordingTransport:
         """Every read performed against this transport, in order."""
         return list(self._requests)
 
-    def last_request(self) -> Optional[RecordedRequest]:
+    def last_request(self) -> RecordedRequest | None:
         """The most recent read, or ``None`` when nothing has been read yet."""
         return self._requests[-1] if self._requests else None
 
-    def get_json(self, path: str, params: Optional[Mapping[str, Any]] = None) -> Any:
+    def get_json(self, path: str, params: Mapping[str, Any] | None = None) -> Any:
         """Record the read and return the next queued payload for ``path``."""
         self._requests.append(RecordedRequest(path=str(path), params=dict(params or {})))
         if self._error is not None:

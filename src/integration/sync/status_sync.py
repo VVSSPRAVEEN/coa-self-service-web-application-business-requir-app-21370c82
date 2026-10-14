@@ -9,16 +9,15 @@ regressing a terminal state) with idempotent, out-of-order-safe handling.
 from __future__ import annotations
 
 import logging
-from datetime import datetime
-from typing import Dict, List, Optional
+from datetime import UTC, datetime
 
 from src.integration.sync.models import (
+    TERMINAL_STATUSES,
     VALID_TRANSITIONS,
     CoaHeader,
     CoaStatus,
     StatusDelta,
     SyncResult,
-    TERMINAL_STATUSES,
 )
 
 logger = logging.getLogger(__name__)
@@ -39,8 +38,8 @@ class StatusSyncService:
     """
 
     def __init__(self) -> None:
-        self._headers: Dict[str, CoaHeader] = {}
-        self._sync_history: List[SyncResult] = []
+        self._headers: dict[str, CoaHeader] = {}
+        self._sync_history: list[SyncResult] = []
 
     def get_or_create_header(self, coa_number: str) -> CoaHeader:
         """Get existing COA header or create a new one in DRAFT status."""
@@ -49,7 +48,7 @@ class StatusSyncService:
                 coa_number=coa_number,
                 current_status=CoaStatus.DRAFT,
                 last_sequence_id=0,
-                last_updated=datetime.utcnow(),
+                last_updated=datetime.now(UTC),
                 processed_keys=set(),
             )
         return self._headers[coa_number]
@@ -141,14 +140,13 @@ class StatusSyncService:
             return result
 
         # Apply the valid transition
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         header.current_status = delta.new_status
         header.last_updated = now
         header.processed_keys.add(delta.idempotency_key)
 
         # Only advance sequence_id if this delta is newer
-        if delta.sequence_id > header.last_sequence_id:
-            header.last_sequence_id = delta.sequence_id
+        header.last_sequence_id = max(header.last_sequence_id, delta.sequence_id)
 
         result = SyncResult(
             coa_number=delta.coa_number,
@@ -168,7 +166,7 @@ class StatusSyncService:
         )
         return result
 
-    def apply_deltas(self, deltas: List[StatusDelta]) -> List[SyncResult]:
+    def apply_deltas(self, deltas: list[StatusDelta]) -> list[SyncResult]:
         """Apply multiple status deltas in order.
 
         Args:
@@ -179,21 +177,21 @@ class StatusSyncService:
         """
         return [self.apply_delta(d) for d in deltas]
 
-    def get_header(self, coa_number: str) -> Optional[CoaHeader]:
+    def get_header(self, coa_number: str) -> CoaHeader | None:
         """Retrieve the current COA header state."""
         return self._headers.get(coa_number)
 
     def get_sync_history(
-        self, coa_number: Optional[str] = None
-    ) -> List[SyncResult]:
+        self, coa_number: str | None = None
+    ) -> list[SyncResult]:
         """Retrieve sync history, optionally filtered by COA number."""
         if coa_number is None:
             return list(self._sync_history)
         return [r for r in self._sync_history if r.coa_number == coa_number]
 
     def reconcile(
-        self, external_states: Dict[str, CoaStatus], source: str
-    ) -> List[SyncResult]:
+        self, external_states: dict[str, CoaStatus], source: str
+    ) -> list[SyncResult]:
         """Scheduled reconciliation: compare external states against local headers.
 
         For any COA where the external state is ahead of our local state,
@@ -206,8 +204,8 @@ class StatusSyncService:
         Returns:
             List of SyncResults from reconciliation.
         """
-        results: List[SyncResult] = []
-        now = datetime.utcnow()
+        results: list[SyncResult] = []
+        now = datetime.now(UTC)
 
         for coa_number, external_status in external_states.items():
             header = self.get_or_create_header(coa_number)

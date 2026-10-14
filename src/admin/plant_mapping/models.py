@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 from pydantic import BaseModel, Field
 
@@ -14,8 +13,8 @@ class PlantMapping(BaseModel):
     is_active: bool = True
     created_by: str
     updated_by: str
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class PlantMappingCreate(BaseModel):
@@ -25,8 +24,8 @@ class PlantMappingCreate(BaseModel):
 
 
 class PlantMappingUpdate(BaseModel):
-    sister_plant_id: Optional[str] = None
-    is_active: Optional[bool] = None
+    sister_plant_id: str | None = None
+    is_active: bool | None = None
     updated_by: str
 
 

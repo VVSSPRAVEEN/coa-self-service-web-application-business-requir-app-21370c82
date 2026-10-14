@@ -21,7 +21,7 @@ once as ``src.workers.scheduler`` and once as ``__main__``.
 from __future__ import annotations
 
 from importlib import import_module
-from typing import Any, Dict, List, Tuple
+from typing import Any
 
 __all__ = [
     "JOB_NAMES",
@@ -32,7 +32,7 @@ __all__ = [
     "run_once",
 ]
 
-_EXPORTS: Dict[str, Tuple[str, ...]] = {
+_EXPORTS: dict[str, tuple[str, ...]] = {
     name: ("scheduler",) for name in __all__
 }
 
@@ -46,5 +46,5 @@ def __getattr__(name: str) -> Any:
     return value
 
 
-def __dir__() -> List[str]:
+def __dir__() -> list[str]:
     return sorted(set(globals()) | set(__all__))

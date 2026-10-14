@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from datetime import datetime
 from enum import Enum
-from typing import Annotated, Optional
+from typing import Annotated
 
 from pydantic import AfterValidator, BaseModel, Field
 
@@ -51,7 +51,7 @@ class OIDCToken(BaseModel):
     id_token: str = Field(..., description="OIDC ID token")
     token_type: str = "Bearer"
     expires_in: int = Field(..., ge=1)
-    refresh_token: Optional[str] = None
+    refresh_token: str | None = None
     provider: OIDCProvider
 
 
@@ -60,14 +60,14 @@ class UserClaims(BaseModel):
 
     sub: str = Field(..., description="Unique subject identifier")
     email: EmailAddress = Field(...)
-    name: Optional[str] = None
+    name: str | None = None
     roles: list[Role] = Field(default_factory=list)
     provider: OIDCProvider
-    external_account_id: Optional[str] = None
-    plant_code: Optional[str] = None
-    iss: Optional[str] = None
-    aud: Optional[str] = None
-    preferred_username: Optional[str] = None
+    external_account_id: str | None = None
+    plant_code: str | None = None
+    iss: str | None = None
+    aud: str | None = None
+    preferred_username: str | None = None
 
     def has_role(self, role: Role) -> bool:
         return role in self.roles
@@ -86,9 +86,9 @@ class AuditEvent(BaseModel):
     user_sub: str = Field(..., description="Subject of the actor")
     action: str = Field(..., description="Audited action verb")
     resource: str = Field(..., description="Target resource")
-    details: Optional[str] = None
+    details: str | None = None
     timestamp: datetime = Field(default_factory=datetime.utcnow)
-    ip_address: Optional[str] = None
+    ip_address: str | None = None
     retention_years: int = 5
     outcome: str = "success"  # success, failure, rejected
 
@@ -99,29 +99,29 @@ class AdminUser(BaseModel):
     id: str = Field(..., description="Internal admin record ID")
     external_sub: str = Field(..., description="OIDC subject from Cognito/Azure AD")
     email: EmailAddress = Field(...)
-    display_name: Optional[str] = None
+    display_name: str | None = None
     provider: OIDCProvider
     roles: list[Role] = Field(default_factory=list)
-    plant_code: Optional[str] = None
+    plant_code: str | None = None
     is_active: bool = True
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
-    created_by: Optional[str] = None
+    created_by: str | None = None
 
 
 class CreateUserRequest(BaseModel):
     external_sub: str
     email: EmailAddress
-    display_name: Optional[str] = None
+    display_name: str | None = None
     roles: list[Role] = Field(default_factory=list)
-    plant_code: Optional[str] = None
+    plant_code: str | None = None
 
 
 class UpdateUserRequest(BaseModel):
-    display_name: Optional[str] = None
-    roles: Optional[list[Role]] = None
-    plant_code: Optional[str] = None
-    is_active: Optional[bool] = None
+    display_name: str | None = None
+    roles: list[Role] | None = None
+    plant_code: str | None = None
+    is_active: bool | None = None
 
 
 class RoleDefinition(BaseModel):

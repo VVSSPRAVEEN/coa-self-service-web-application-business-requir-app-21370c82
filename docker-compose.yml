@@ -224,7 +224,7 @@ services:
       ALERT_CS_RECIPIENTS: "${ALERT_CS_RECIPIENTS:-}"
       ALERT_QA_RECIPIENTS: "${ALERT_QA_RECIPIENTS:-}"
     volumes:
-      - ./inbound:/workspace/inbound
+      - worker-inbound:/workspace/inbound
     depends_on:
       audit-db:
         condition: service_healthy
@@ -364,5 +364,6 @@ networks:
     driver: bridge
 
 volumes:
+  worker-inbound:
   audit-db-data:
   s3-mock-data:

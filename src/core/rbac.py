@@ -23,7 +23,8 @@ normalised to the same comparison.
 
 from __future__ import annotations
 
-from typing import Any, Iterable, Mapping, Optional
+from collections.abc import Iterable, Mapping
+from typing import Any
 
 __all__ = [
     "ACTIONS",
@@ -85,7 +86,7 @@ def _roles_of(user: Any) -> list[str]:
     ]
 
 
-def _normalize_action(action: Any) -> Optional[str]:
+def _normalize_action(action: Any) -> str | None:
     """Return the canonical action name, or ``None`` when it is not an action."""
     if not isinstance(action, str):
         return None

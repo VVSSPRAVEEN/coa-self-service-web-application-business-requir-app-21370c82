@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import List
 
 from src.integration.bottomline.models import BottomlineRawRecord
 
@@ -16,7 +15,7 @@ class BottomlineParseError(Exception):
         super().__init__(message)
 
 
-def parse_bottomline_flat(content: str, batch_id: str) -> List[BottomlineRawRecord]:
+def parse_bottomline_flat(content: str, batch_id: str) -> list[BottomlineRawRecord]:
     """Parse Bottomline flat layout content into raw records.
 
     The Bottomline flat file format uses pipe-delimited fields:
@@ -32,7 +31,7 @@ def parse_bottomline_flat(content: str, batch_id: str) -> List[BottomlineRawReco
     Raises:
         BottomlineParseError: If any line cannot be parsed correctly.
     """
-    records: List[BottomlineRawRecord] = []
+    records: list[BottomlineRawRecord] = []
     lines = content.strip().splitlines()
 
     if not lines:

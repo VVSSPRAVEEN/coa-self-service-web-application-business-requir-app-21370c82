@@ -42,10 +42,11 @@ import os
 import shutil
 import sys
 import time
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, List, Mapping, Optional, Protocol, Sequence
+from typing import Any, Protocol
 
 from src.integration.bottomline.ingestor import BottomlineIngestor
 from src.integration.bottomline.models import IngestedFile, IngestionStatus
@@ -72,12 +73,12 @@ __all__ = [
     "DEFAULT_DLQ_STORAGE_PATH",
     "DEFAULT_INTERVAL_SECONDS",
     "DLQ_REDRIVE",
-    "HttpJsonFetcher",
     "JOB_NAMES",
-    "JobOutcome",
-    "LocalDropDirectoryClient",
     "NOTIFICATIONS",
     "STATUS_SYNC",
+    "HttpJsonFetcher",
+    "JobOutcome",
+    "LocalDropDirectoryClient",
     "Scheduler",
     "SystemClock",
     "main",
@@ -133,7 +134,7 @@ class SystemClock:
 
     def now(self) -> datetime:
         """Return the current UTC time."""
-        return datetime.now(timezone.utc)
+        return datetime.now(UTC)
 
     def sleep(self, seconds: float) -> None:
         """Block for ``seconds``."""
@@ -143,7 +144,7 @@ class SystemClock:
 class Fetcher(Protocol):
     """Reads a JSON document list from a URL."""
 
-    def __call__(self, url: str) -> List[dict[str, Any]]:
+    def __call__(self, url: str) -> list[dict[str, Any]]:
         ...
 
 
@@ -158,7 +159,7 @@ class HttpJsonFetcher:
     def __init__(self, timeout: float = 30.0) -> None:
         self._timeout = timeout
 
-    def __call__(self, url: str) -> List[dict[str, Any]]:
+    def __call__(self, url: str) -> list[dict[str, Any]]:
         """Return the documents published at ``url``."""
         import httpx
 
@@ -192,7 +193,7 @@ class LocalDropDirectoryClient:
     def __init__(self, root: Path) -> None:
         self._root = Path(root)
 
-    def list_files(self, remote_dir: str) -> List[str]:
+    def list_files(self, remote_dir: str) -> list[str]:
         """Return the names of the regular files in the drop directory."""
         try:
             return sorted(
@@ -270,7 +271,7 @@ def _file_incoming_file(
     _move(source, processed)
 
 
-def _recipients(raw: Optional[str]) -> tuple[str, ...]:
+def _recipients(raw: str | None) -> tuple[str, ...]:
     """Split a comma-separated recipient list, dropping blanks."""
     if not raw:
         return ()
@@ -303,13 +304,13 @@ class Scheduler:
     def __init__(
         self,
         *,
-        env: Optional[Mapping[str, str]] = None,
-        clock: Optional[Clock] = None,
-        transport: Optional[MailTransport] = None,
-        fetcher: Optional[Fetcher] = None,
-        repository: Optional[IngestionRepository] = None,
-        sync_service: Optional[StatusSyncService] = None,
-        dispatcher: Optional[EmailDispatcher] = None,
+        env: Mapping[str, str] | None = None,
+        clock: Clock | None = None,
+        transport: MailTransport | None = None,
+        fetcher: Fetcher | None = None,
+        repository: IngestionRepository | None = None,
+        sync_service: StatusSyncService | None = None,
+        dispatcher: EmailDispatcher | None = None,
     ) -> None:
         self._env: Mapping[str, str] = os.environ if env is None else env
         self._clock: Clock = clock or SystemClock()
@@ -599,7 +600,7 @@ class Scheduler:
             try:
                 alert = json.loads(alert_file.read_text(encoding="utf-8"))
                 if not isinstance(alert, Mapping):
-                    raise ValueError("alert must be a JSON object")
+                    raise TypeError("alert must be a JSON object")
                 sent = self._dispatcher.dispatch(
                     report_window=str(alert["report_window"]),
                     subject=str(alert["subject"]),
@@ -635,13 +636,13 @@ class Scheduler:
 
     # -- the loop ------------------------------------------------------------
 
-    def run_once(self) -> List[JobOutcome]:
+    def run_once(self) -> list[JobOutcome]:
         """Run every job once and return one :class:`JobOutcome` per job.
 
         A job that raises is reported as a failed outcome; the remaining jobs
         still run, so one bad input cannot stop the cycle.
         """
-        outcomes: List[JobOutcome] = []
+        outcomes: list[JobOutcome] = []
         for name, job in (
             (BOTTOMLINE_INGEST, self.run_bottomline_ingest),
             (STATUS_SYNC, self.run_status_sync),
@@ -680,7 +681,7 @@ def _build_scheduler() -> Scheduler:
     return Scheduler()
 
 
-def run_once(scheduler: Optional[Scheduler] = None) -> List[JobOutcome]:
+def run_once(scheduler: Scheduler | None = None) -> list[JobOutcome]:
     """Run one full cycle of every job against ``scheduler``.
 
     This is the entry point the unit suite calls: it executes the same jobs the
@@ -689,7 +690,7 @@ def run_once(scheduler: Optional[Scheduler] = None) -> List[JobOutcome]:
     return (scheduler or _build_scheduler()).run_once()
 
 
-def main(argv: Optional[Sequence[str]] = None) -> int:
+def main(argv: Sequence[str] | None = None) -> int:
     """Run the worker loop. ``python -m src.workers.scheduler`` lands here.
 
     Args:

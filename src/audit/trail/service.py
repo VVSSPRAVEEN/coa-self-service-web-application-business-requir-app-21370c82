@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-
-from typing import List, Optional
-
 from src.audit.trail.chain import AuditChain
 from src.audit.trail.models import AuditEventType, AuditLogEntry
 from src.audit.trail.repository import AuditRepository
@@ -16,7 +13,7 @@ class AuditTrailService:
     Coordinates chain sealing, persistence, and integrity verification.
     """
 
-    def __init__(self, repository: Optional[AuditRepository] = None) -> None:
+    def __init__(self, repository: AuditRepository | None = None) -> None:
         self._repository = repository or AuditRepository()
         self._chain = AuditChain()
 
@@ -25,9 +22,9 @@ class AuditTrailService:
         event_type: AuditEventType,
         user_sub: str,
         resource_id: str,
-        details: Optional[str] = None,
-        ip_address: Optional[str] = None,
-        idempotency_key: Optional[str] = None,
+        details: str | None = None,
+        ip_address: str | None = None,
+        idempotency_key: str | None = None,
     ) -> AuditLogEntry:
         """Record a new audit event, sealing it into the hash chain.
 
@@ -66,7 +63,7 @@ class AuditTrailService:
         self._repository.append(sealed_entry)
         return sealed_entry
 
-    def verify_chain_integrity(self) -> tuple[bool, Optional[int]]:
+    def verify_chain_integrity(self) -> tuple[bool, int | None]:
         """Verify the entire audit chain has not been tampered with.
 
         Returns:
@@ -75,21 +72,21 @@ class AuditTrailService:
         entries = self._repository.get_all()
         return self._chain.verify_integrity(entries)
 
-    def get_events_for_resource(self, resource_id: str) -> List[AuditLogEntry]:
+    def get_events_for_resource(self, resource_id: str) -> list[AuditLogEntry]:
         """Retrieve all audit events for a specific COA/resource."""
         return self._repository.get_by_resource(resource_id)
 
-    def get_events_by_type(self, event_type: AuditEventType) -> List[AuditLogEntry]:
+    def get_events_by_type(self, event_type: AuditEventType) -> list[AuditLogEntry]:
         """Retrieve all audit events of a given type."""
         return self._repository.get_by_type(event_type)
 
-    def get_all_events(self) -> List[AuditLogEntry]:
+    def get_all_events(self) -> list[AuditLogEntry]:
         """Retrieve all audit events in chain order."""
         return self._repository.get_all()
 
     def detect_tampering(
-        self, trusted_snapshot: List[AuditLogEntry]
-    ) -> List[int]:
+        self, trusted_snapshot: list[AuditLogEntry]
+    ) -> list[int]:
         """Compare a trusted snapshot against current chain state.
 
         Returns list of indices where entries differ.

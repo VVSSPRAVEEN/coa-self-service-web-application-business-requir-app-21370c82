@@ -22,7 +22,7 @@ exists.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Tuple
+from typing import Any
 
 __all__ = [
     "PlantMapping",
@@ -42,7 +42,7 @@ __all__ = [
 # Public name -> submodules of this package that may define it, in resolution
 # order. Every module named here is a real file next to this one; the HTTP
 # surface is ``router``, not a separate ``api`` module.
-_EXPORTS: Dict[str, Tuple[str, ...]] = {
+_EXPORTS: dict[str, tuple[str, ...]] = {
     "PlantMapping": ("models",),
     "PlantMappingCreate": ("models",),
     "PlantMappingResponse": ("models",),
@@ -63,7 +63,7 @@ def _load(name: str) -> Any:
     candidates = _EXPORTS.get(name)
     if candidates is None:
         raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-    errors: List[str] = []
+    errors: list[str] = []
     for module_name in candidates:
         try:
             module = __import__(f"{__name__}.{module_name}", globals(), locals(), [module_name])
@@ -86,5 +86,5 @@ def __getattr__(name: str) -> Any:
     return value
 
 
-def __dir__() -> List[str]:
+def __dir__() -> list[str]:
     return sorted(set(globals()) | set(__all__))

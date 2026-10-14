@@ -31,8 +31,9 @@ fails closed so an absent test result can never be mistaken for a passing one.
 
 from __future__ import annotations
 
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
-from typing import Any, Callable, Mapping, Optional, Sequence
+from typing import Any
 
 __all__ = [
     "COMPLETE",
@@ -97,7 +98,7 @@ def _coa_id_of(coa: Any) -> str:
     return ""
 
 
-def _completion_value(coa: Any) -> Optional[str]:
+def _completion_value(coa: Any) -> str | None:
     """Return the normalised upstream completion status of ``coa`` (or ``None``)."""
     raw = _read(coa, "completion_status")
     if raw is None:
@@ -136,7 +137,7 @@ def _fields_mapping(test_results: Any) -> Mapping[str, Any]:
     return fields if isinstance(fields, Mapping) else {}
 
 
-def _declared_missing(test_results: Any) -> Optional[list[str]]:
+def _declared_missing(test_results: Any) -> list[str] | None:
     """Return the field names published in ``test_results["missing"]`` (or ``None``)."""
     missing = _read(test_results, "missing")
     if missing is None:
@@ -193,22 +194,22 @@ class CompletionGate:
             ``test_results`` exactly as described in this module's docstring.
     """
 
-    def __init__(self, required_fields: Optional[Sequence[str]] = None) -> None:
-        self._required_fields: Optional[tuple[str, ...]] = (
+    def __init__(self, required_fields: Sequence[str] | None = None) -> None:
+        self._required_fields: tuple[str, ...] | None = (
             tuple(str(name) for name in required_fields)
             if required_fields is not None
             else None
         )
 
     @property
-    def required_fields(self) -> Optional[tuple[str, ...]]:
+    def required_fields(self) -> tuple[str, ...] | None:
         """The configured required fields, or ``None`` when derived per record."""
         return self._required_fields
 
     def validate_coa(
         self,
         coa: Any,
-        required_fields: Optional[Sequence[str]] = None,
+        required_fields: Sequence[str] | None = None,
     ) -> ValidationOutcome:
         """Return the :class:`ValidationOutcome` for ``coa``.
 
@@ -268,8 +269,8 @@ class CompletionGate:
         return replace(outcome, coa_id=str(coa_id))
 
     def _resolve_required_fields(
-        self, required_fields: Optional[Sequence[str]]
-    ) -> Optional[tuple[str, ...]]:
+        self, required_fields: Sequence[str] | None
+    ) -> tuple[str, ...] | None:
         if required_fields is not None:
             return tuple(str(name) for name in required_fields)
         return self._required_fields

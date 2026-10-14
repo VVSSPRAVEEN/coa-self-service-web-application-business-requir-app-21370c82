@@ -15,8 +15,6 @@ place that maps them onto status codes (409 and 404).
 
 from __future__ import annotations
 
-from typing import List, Optional
-
 from src.admin.plant_mapping.models import (
     PlantMapping,
     PlantMappingCreate,
@@ -59,7 +57,7 @@ class PlantMappingService:
     identical, which is why no ``if postgres`` branch appears in this module.
     """
 
-    def __init__(self, repository: Optional[PlantMappingStore] = None) -> None:
+    def __init__(self, repository: PlantMappingStore | None = None) -> None:
         self._repo = repository or build_plant_mapping_repository()
 
     async def create_mapping(
@@ -80,13 +78,13 @@ class PlantMappingService:
             raise MappingNotFoundError("Plant mapping not found")
         return PlantMappingResponse(**mapping.model_dump())
 
-    async def list_mappings(self) -> List[PlantMappingResponse]:
+    async def list_mappings(self) -> list[PlantMappingResponse]:
         mappings = await self._repo.list_all()
         return [PlantMappingResponse(**m.model_dump()) for m in mappings]
 
     async def list_by_source_plant(
         self, source_plant_id: str
-    ) -> List[PlantMappingResponse]:
+    ) -> list[PlantMappingResponse]:
         mappings = await self._repo.get_by_source_plant(source_plant_id)
         return [PlantMappingResponse(**m.model_dump()) for m in mappings]
 
@@ -103,6 +101,6 @@ class PlantMappingService:
         if not deleted:
             raise MappingNotFoundError("Plant mapping not found")
 
-    async def get_active_sister_plants(self, source_plant_id: str) -> List[str]:
+    async def get_active_sister_plants(self, source_plant_id: str) -> list[str]:
         mappings = await self._repo.get_by_source_plant(source_plant_id)
         return [m.sister_plant_id for m in mappings if m.is_active]

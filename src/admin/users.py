@@ -43,10 +43,11 @@ import os
 import re
 import threading
 import uuid
+from collections.abc import Iterable, Mapping
 from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Iterable, Mapping, Optional, Protocol
+from typing import Any, Protocol
 
 from src.core.postgres import (
     BACKEND_POSTGRES,
@@ -150,9 +151,9 @@ class UserDTO:
 
     user_id: str
     username: str
-    email: Optional[str]
+    email: str | None
     role: str
-    organization: Optional[str]
+    organization: str | None
     created_at: str
 
     def to_dict(self) -> dict[str, Any]:
@@ -166,13 +167,13 @@ class UserRegistry(Protocol):
     def list_users(self) -> list[UserDTO]:
         ...
 
-    def get_user(self, user_id: str) -> Optional[UserDTO]:
+    def get_user(self, user_id: str) -> UserDTO | None:
         ...
 
     def create(self, row: Mapping[str, Any]) -> UserDTO:
         ...
 
-    def update_role(self, user_id: str, role: str) -> Optional[UserDTO]:
+    def update_role(self, user_id: str, role: str) -> UserDTO | None:
         ...
 
 
@@ -198,24 +199,24 @@ def _validate_username(username: Any) -> str:
     return username.strip()
 
 
-def _validate_email(email: Any) -> Optional[str]:
+def _validate_email(email: Any) -> str | None:
     '''Return the trimmed email address, raising ``ValueError`` when malformed.'''
     if email is None or email == '':
         return None
     if not isinstance(email, str):
-        raise ValueError('email must be a string')
+        raise TypeError('email must be a string')
     trimmed = email.strip()
     if not _EMAIL_PATTERN.match(trimmed):
         raise ValueError(f'email is not a valid address: {email!r}')
     return trimmed
 
 
-def _validate_organization(organization: Any) -> Optional[str]:
+def _validate_organization(organization: Any) -> str | None:
     '''Return the trimmed organization name, or ``None`` when absent.'''
     if organization is None:
         return None
     if not isinstance(organization, str):
-        raise ValueError('organization must be a string')
+        raise TypeError('organization must be a string')
     trimmed = organization.strip()
     return trimmed or None
 
@@ -266,8 +267,8 @@ def _iso_utc(value: Any) -> str:
     identical on either store.
     '''
     if isinstance(value, datetime):
-        aware = value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
-        return aware.astimezone(timezone.utc).isoformat()
+        aware = value if value.tzinfo is not None else value.replace(tzinfo=UTC)
+        return aware.astimezone(UTC).isoformat()
     return str(value)
 
 
@@ -311,7 +312,7 @@ class JsonUserRegistry:
         with _LOCK:
             return _sorted_users([_row_to_dto(row) for row in _read_rows()])
 
-    def get_user(self, user_id: str) -> Optional[UserDTO]:
+    def get_user(self, user_id: str) -> UserDTO | None:
         '''Return the account with ``user_id``, or ``None`` when it is unknown.'''
         with _LOCK:
             for row in _read_rows():
@@ -332,7 +333,7 @@ class JsonUserRegistry:
             _write_rows(rows)
         return _row_to_dto(row)
 
-    def update_role(self, user_id: str, role: str) -> Optional[UserDTO]:
+    def update_role(self, user_id: str, role: str) -> UserDTO | None:
         '''Set ``role`` on the matching row, or return ``None`` when unknown.'''
         with _LOCK:
             rows = _read_rows()
@@ -367,23 +368,21 @@ class PostgresUserRegistry:
 
     def list_users(self) -> list[UserDTO]:
         '''Return every registered account, oldest first.'''
-        with connection(self._target) as conn:
-            with conn.cursor() as cursor:
-                # nosemgrep: python.sqlalchemy.security.sqlalchemy-execute-raw-query.sqlalchemy-execute-raw-query -- statement is a fixed module-level constant and every value is a bound %s parameter
-                cursor.execute(_SELECT_ALL_USERS_SQL)
-                rows = cursor.fetchall() or []
+        with connection(self._target) as conn, conn.cursor() as cursor:
+            # nosemgrep: python.sqlalchemy.security.sqlalchemy-execute-raw-query.sqlalchemy-execute-raw-query -- statement is a fixed module-level constant and every value is a bound %s parameter
+            cursor.execute(_SELECT_ALL_USERS_SQL)
+            rows = cursor.fetchall() or []
         return _sorted_users([_row_to_dto(row) for row in rows])
 
-    def get_user(self, user_id: str) -> Optional[UserDTO]:
+    def get_user(self, user_id: str) -> UserDTO | None:
         '''Return the account with ``user_id``, or ``None`` when it is unknown.'''
-        with connection(self._target) as conn:
-            with conn.cursor() as cursor:
-                # nosemgrep: python.sqlalchemy.security.sqlalchemy-execute-raw-query.sqlalchemy-execute-raw-query -- statement is a fixed module-level constant and every value is a bound %s parameter
-                cursor.execute(
-                    _SELECT_ONE_USER_SQL,
-                    (user_id,),
-                )
-                row = cursor.fetchone()
+        with connection(self._target) as conn, conn.cursor() as cursor:
+            # nosemgrep: python.sqlalchemy.security.sqlalchemy-execute-raw-query.sqlalchemy-execute-raw-query -- statement is a fixed module-level constant and every value is a bound %s parameter
+            cursor.execute(
+                _SELECT_ONE_USER_SQL,
+                (user_id,),
+            )
+            row = cursor.fetchone()
         return None if row is None else _row_to_dto(row)
 
     def create(self, row: Mapping[str, Any]) -> UserDTO:
@@ -392,39 +391,37 @@ class PostgresUserRegistry:
         placeholders = ', '.join(['%s'] * len(columns))
         params = tuple(row[column] for column in columns)
         username = str(row.get('username', ''))
-        with connection(self._target) as conn:
-            with conn.cursor() as cursor:
+        with connection(self._target) as conn, conn.cursor() as cursor:
+            cursor.execute(
+                'SELECT 1 FROM admin_users WHERE lower(username) = lower(%s)',
+                (username,),
+            )
+            if cursor.fetchone() is not None:
+                raise DuplicateUserError(username)
+            try:
                 cursor.execute(
-                    'SELECT 1 FROM admin_users WHERE lower(username) = lower(%s)',
-                    (username,),
+                    f'INSERT INTO admin_users ({", ".join(columns)}) '
+                    f'VALUES ({placeholders}) RETURNING {_SELECT_LIST}',
+                    params,
                 )
-                if cursor.fetchone() is not None:
-                    raise DuplicateUserError(username)
-                try:
-                    cursor.execute(
-                        f'INSERT INTO admin_users ({", ".join(columns)}) '
-                        f'VALUES ({placeholders}) RETURNING {_SELECT_LIST}',
-                        params,
-                    )
-                except Exception as exc:  # translated, re-raised below
-                    if _is_unique_violation(exc):
-                        raise DuplicateUserError(str(row.get('username', ''))) from exc
-                    raise
-                created = cursor.fetchone()
+            except Exception as exc:  # translated, re-raised below
+                if _is_unique_violation(exc):
+                    raise DuplicateUserError(str(row.get('username', ''))) from exc
+                raise
+            created = cursor.fetchone()
         if created is None:  # INSERT ... RETURNING always yields one row.
             raise RuntimeError('admin_users INSERT ... RETURNING produced no row')
         return _row_to_dto(created)
 
-    def update_role(self, user_id: str, role: str) -> Optional[UserDTO]:
+    def update_role(self, user_id: str, role: str) -> UserDTO | None:
         '''Set ``role`` on the matching row, or return ``None`` when unknown.'''
-        with connection(self._target) as conn:
-            with conn.cursor() as cursor:
-                cursor.execute(
-                    f'UPDATE admin_users SET role = %s WHERE user_id = %s '
-                    f'RETURNING {_SELECT_LIST}',
-                    (role, user_id),
-                )
-                updated = cursor.fetchone()
+        with connection(self._target) as conn, conn.cursor() as cursor:
+            cursor.execute(
+                f'UPDATE admin_users SET role = %s WHERE user_id = %s '
+                f'RETURNING {_SELECT_LIST}',
+                (role, user_id),
+            )
+            updated = cursor.fetchone()
         return None if updated is None else _row_to_dto(updated)
 
 
@@ -446,18 +443,18 @@ def list_users() -> list[UserDTO]:
     return _store().list_users()
 
 
-def get_user(user_id: str) -> Optional[UserDTO]:
+def get_user(user_id: str) -> UserDTO | None:
     '''Return one external account, or ``None`` when the identifier is unknown.'''
     return _store().get_user(user_id)
 
 
 def create_external_account(
     payload: Any,
-    email: Optional[str] = None,
+    email: str | None = None,
     role: str = 'internal',
-    organization: Optional[str] = None,
+    organization: str | None = None,
     *,
-    user_id: Optional[str] = None,
+    user_id: str | None = None,
 ) -> UserDTO:
     '''Create one external account after validating every field.
 
@@ -492,7 +489,7 @@ def create_external_account(
         'email': _validate_email(email),
         'role': _validate_role(role),
         'organization': _validate_organization(organization),
-        'created_at': _iso_utc(datetime.now(timezone.utc)),
+        'created_at': _iso_utc(datetime.now(UTC)),
     }
     return _store().create(row)
 

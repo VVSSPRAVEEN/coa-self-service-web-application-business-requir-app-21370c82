@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import csv
 import io
-from typing import Sequence
+from collections.abc import Sequence
 
 from src.reports.missing_coa.models import MissingCoaRow
 
@@ -50,8 +50,7 @@ def render_text(rows: Sequence[MissingCoaRow]) -> str:
     for rd in row_dicts:
         for key in headers:
             val_len = len(str(rd.get(key, "")))
-            if val_len > col_widths[key]:
-                col_widths[key] = val_len
+            col_widths[key] = max(col_widths[key], val_len)
 
     # Build header line
     header_parts = []

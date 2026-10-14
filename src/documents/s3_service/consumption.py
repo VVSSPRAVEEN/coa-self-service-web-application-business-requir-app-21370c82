@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import secrets
 import threading
-from typing import Callable, Optional
+from collections.abc import Callable
 
 __all__ = [
     "SingleUseUrlStore",
@@ -64,7 +64,7 @@ class SingleUseUrlStore:
             make them deterministic.
     """
 
-    def __init__(self, id_factory: Optional[Callable[[], str]] = None) -> None:
+    def __init__(self, id_factory: Callable[[], str] | None = None) -> None:
         self._id_factory = id_factory or (lambda: secrets.token_urlsafe(18))
         self._lock = threading.RLock()
         self._active: dict[str, str] = {}
@@ -115,7 +115,7 @@ class SingleUseUrlStore:
         with self._lock:
             return str(scope_id) in self._consumed
 
-    def active_scope_for(self, strategy_key: str) -> Optional[str]:
+    def active_scope_for(self, strategy_key: str) -> str | None:
         """Return the live scope for ``strategy_key``, or ``None`` when it has none."""
         with self._lock:
             return self._active.get(str(strategy_key))
@@ -149,7 +149,7 @@ class SingleUseUrlStore:
 
 
 _STORE_LOCK = threading.Lock()
-_STORE: Optional[SingleUseUrlStore] = None
+_STORE: SingleUseUrlStore | None = None
 
 
 def get_consumption_store() -> SingleUseUrlStore:

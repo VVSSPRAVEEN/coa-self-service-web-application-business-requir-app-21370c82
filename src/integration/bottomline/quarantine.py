@@ -13,7 +13,7 @@ file name can never escape the quarantine directory.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 from src.integration.bottomline.models import AuditEntry
@@ -60,7 +60,7 @@ def quarantine_rejected_file(
     target_dir = Path(quarantine_dir or DEFAULT_QUARANTINE_DIR)
     target_dir.mkdir(parents=True, exist_ok=True)
 
-    timestamp = datetime.utcnow()
+    timestamp = datetime.now(UTC)
     ts_suffix = timestamp.strftime("%Y%m%dT%H%M%S")
     quarantine_name = f"{batch_id}_{ts_suffix}_{safe_name}"
     quarantine_path = target_dir / quarantine_name

@@ -11,9 +11,10 @@ import hmac
 import json
 import os
 import secrets
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Callable, Optional, Protocol
+from datetime import UTC, datetime
+from typing import Any, Protocol
 
 # Action names written into the immutable audit trail (FR8 / FR12).
 PRINT_ATTEMPT = "print_attempt"
@@ -51,7 +52,7 @@ class PrintAuditEvent:
     coa_id: str
     action: str
     detail: str
-    scope_hash: Optional[str] = None
+    scope_hash: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -77,7 +78,7 @@ class PrintRequest:
     user_id: str
     coa_id: str
     reauth_token: str
-    print_scope_hash: Optional[str] = None
+    print_scope_hash: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
@@ -87,7 +88,7 @@ class PrintResponse:
 
     success: bool
     audit_event: PrintAuditEvent
-    presigned_url: Optional[str] = None
+    presigned_url: str | None = None
 
 
 class PrintService:
@@ -110,10 +111,10 @@ class PrintService:
         self,
         *,
         reauth_secret: bytes,
-        presigned_url_service: Optional[Any] = None,
+        presigned_url_service: Any | None = None,
         validate_before_print: bool = True,
-        print_validator: Optional[Callable[[str, str], bool]] = None,
-        audit_logger: Optional[Callable[[PrintAuditEvent], None]] = None,
+        print_validator: Callable[[str, str], bool] | None = None,
+        audit_logger: Callable[[PrintAuditEvent], None] | None = None,
     ) -> None:
         if not reauth_secret:
             raise ValueError("reauth_secret must be a non-empty secret")
@@ -130,7 +131,7 @@ class PrintService:
         HMAC-signed with the same secret ``from_env`` reads, so a token minted
         by the auth layer verifies here and nowhere else.
         """
-        iat = int(datetime.now(timezone.utc).timestamp())
+        iat = int(datetime.now(UTC).timestamp())
         header = self._b64encode(
             json.dumps({"alg": self.REAUTH_ALGORITHM, "typ": "JWT"}).encode("utf-8")
         )
@@ -144,7 +145,7 @@ class PrintService:
         """Process a print request with re-auth enforcement and audit."""
         user_id = request.user_id
         coa_id = request.coa_id
-        timestamp = datetime.now(timezone.utc)
+        timestamp = datetime.now(UTC)
 
         # FR8: verify the re-auth token first; failure is a denied audit event.
         reauth_ok, reason = self._verify_reauth(request.reauth_token, user_id, coa_id)
@@ -159,19 +160,18 @@ class PrintService:
             )
 
         # FR6: completion-gate validation runs before any distribution.
-        if self._validate_before_print and self._print_validator is not None:
-            if not self._print_validator(coa_id, user_id):
-                return self._deny(
-                    user_id=user_id,
-                    coa_id=coa_id,
-                    timestamp=timestamp,
-                    action=PRINT_DENIED_VALIDATION,
-                    detail="completion gate validation failed for print",
-                    scope_hash=request.print_scope_hash,
-                )
+        if self._validate_before_print and self._print_validator is not None and not self._print_validator(coa_id, user_id):
+            return self._deny(
+                user_id=user_id,
+                coa_id=coa_id,
+                timestamp=timestamp,
+                action=PRINT_DENIED_VALIDATION,
+                detail="completion gate validation failed for print",
+                scope_hash=request.print_scope_hash,
+            )
 
         # Scoped presigned URL for the print download (FR7 / FR18).
-        url: Optional[str] = None
+        url: str | None = None
         provider = self._presigned_url_service
         if provider is not None:
             try:
@@ -181,7 +181,7 @@ class PrintService:
                     coa_id=coa_id,
                 )
                 url = result.signed_url
-            except Exception as exc:  # deny, never leak internals
+            except Exception as exc:  # noqa: BLE001 - deny, never leak internals
                 return self._deny(
                     user_id=user_id,
                     coa_id=coa_id,
@@ -212,7 +212,7 @@ class PrintService:
         timestamp: datetime,
         action: str,
         detail: str,
-        scope_hash: Optional[str] = None,
+        scope_hash: str | None = None,
     ) -> PrintResponse:
         """Emit a denial audit event and return a failed response."""
         event = PrintAuditEvent(
@@ -268,7 +268,7 @@ class PrintService:
         if not hmac.compare_digest(signature.rstrip("="), expected_sig):
             return False, "re-auth token signature verification failed"
 
-        now = datetime.now(timezone.utc).timestamp()
+        now = datetime.now(UTC).timestamp()
         if issued_at > now:
             return False, "re-auth token not yet valid"
         if (now - issued_at) > self.REAUTH_LIFETIME_SECONDS:
@@ -299,7 +299,7 @@ class PrintService:
             self._audit_logger(event)
 
     @classmethod
-    def from_env(cls, **overrides: Any) -> "PrintService":
+    def from_env(cls, **overrides: Any) -> PrintService:
         """Construct from environment configuration.
 
         The re-auth secret is read with the standard ``os.getenv`` configuration

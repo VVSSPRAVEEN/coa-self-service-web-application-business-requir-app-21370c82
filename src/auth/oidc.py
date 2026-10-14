@@ -34,9 +34,9 @@ import os
 import threading
 import time
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from hashlib import sha256
-from typing import Any, Optional
+from typing import Any
 
 __all__ = [
     "AuthResponse",
@@ -78,7 +78,7 @@ class User:
     username: str
     roles: list[str] = field(default_factory=list)
     plants: list[str] = field(default_factory=list)
-    email: Optional[str] = None
+    email: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Return the JSON-ready mapping used by the login contract."""
@@ -150,13 +150,13 @@ def signature_verification_available() -> bool:
     return False
 
 
-def _pyjwt_module() -> Optional[Any]:
+def _pyjwt_module() -> Any | None:
     """Return the PyJWT module when importable, else ``None``."""
     try:  # pragma: no cover - depends on the installed image
         import jwt  # type: ignore
 
         return jwt
-    except Exception:  # pragma: no cover - degraded mode documented above
+    except ImportError:  # pragma: no cover - degraded mode documented above
         return None
 
 
@@ -209,7 +209,7 @@ def _decode_structure(token: str) -> _DecodedToken:
     )
 
 
-def _numeric_claim(claims: dict[str, Any], name: str) -> Optional[float]:
+def _numeric_claim(claims: dict[str, Any], name: str) -> float | None:
     """Return a numeric JWT claim, rejecting booleans and non-numbers."""
     value = claims.get(name)
     if value is None:
@@ -243,9 +243,8 @@ def _verify_audience_and_issuer(claims: dict[str, Any]) -> None:
         if client_id not in [str(item) for item in audiences]:
             raise TokenValidationError("token audience does not match this application")
     issuer = claims.get("iss")
-    if issuer is not None and config["issuer"]:
-        if str(issuer) != config["issuer"]:
-            raise TokenValidationError("token issuer does not match the provider")
+    if issuer is not None and config["issuer"] and str(issuer) != config["issuer"]:
+        raise TokenValidationError("token issuer does not match the provider")
 
 
 def _verify_hs256(token: _DecodedToken, secret: str) -> None:
@@ -404,5 +403,5 @@ def login_flow(token: str) -> AuthResponse:
     """
     decoded, exp = _decode_and_verify(token)
     user = _build_user(decoded.claims)
-    expires_at = datetime.fromtimestamp(exp, tz=timezone.utc).isoformat()
+    expires_at = datetime.fromtimestamp(exp, tz=UTC).isoformat()
     return AuthResponse(user=user, token=token, expires_at=expires_at)

@@ -1,3 +1,3 @@
-from .print_service import PrintService, PrintRequest, PrintResponse, PrintAuditEvent
+from .print_service import PrintAuditEvent, PrintRequest, PrintResponse, PrintService
 
-__all__ = ["PrintService", "PrintRequest", "PrintResponse", "PrintAuditEvent"]
+__all__ = ["PrintAuditEvent", "PrintRequest", "PrintResponse", "PrintService"]

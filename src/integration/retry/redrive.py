@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from src.integration.retry.dlq import DeadLetterQueue
 
@@ -73,7 +74,7 @@ def redrive_dlq(
                     "event": "dlq_redrive_success",
                 },
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - per-record redrive isolation
             results["failed"] += 1
             logger.error(
                 "dlq_redrive_failed",

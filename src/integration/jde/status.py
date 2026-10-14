@@ -9,8 +9,9 @@ passed but whose header is still open must still be blocked.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any, Mapping, Optional
+from collections.abc import Mapping
+from datetime import UTC, datetime
+from typing import Any
 
 from .client import CoaStatusPath, JDEPayloadError, JDETransport
 
@@ -19,8 +20,8 @@ __all__ = [
     "JDECOAStatus",
     "jde_status_is_final",
     "read_coa_id",
-    "read_completion_status",
     "read_completed_at",
+    "read_completion_status",
 ]
 
 #: ``completion_status`` values JDE publishes for a COA that may be released.
@@ -38,7 +39,7 @@ _ID_KEYS = ("coa_id", "coa_number", "coa", "id")
 _DONE_KEYS = ("completed", "is_complete", "released", "is_released")
 
 
-def _clean(value: Any) -> Optional[str]:
+def _clean(value: Any) -> str | None:
     """Return ``value`` as a trimmed lowercase string, or ``None`` when empty."""
     if value is None:
         return None
@@ -46,7 +47,7 @@ def _clean(value: Any) -> Optional[str]:
     return text or None
 
 
-def read_completion_status(payload: Any) -> Optional[str]:
+def read_completion_status(payload: Any) -> str | None:
     """Return the lifecycle status JDE published, or ``None`` when it published none.
 
     Args:
@@ -88,7 +89,7 @@ def read_coa_id(payload: Any) -> str:
     return ""
 
 
-def read_completed_at(payload: Any) -> Optional[str]:
+def read_completed_at(payload: Any) -> str | None:
     """Return the ISO-8601 completion timestamp JDE published, if any."""
     if not isinstance(payload, Mapping):
         return None
@@ -165,5 +166,5 @@ class JDECOAStatus:
     def fetch_status_as_of(self, coa_id: str) -> dict[str, Any]:
         """Return the status document plus the UTC instant it was observed."""
         status = self.fetch_coa_status(coa_id)
-        status["observed_at"] = datetime.now(timezone.utc).isoformat()
+        status["observed_at"] = datetime.now(UTC).isoformat()
         return status

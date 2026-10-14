@@ -13,14 +13,14 @@ the transport layer can translate one failure into one status code
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 from .validator import CompletionGate, ValidationOutcome
 
 __all__ = [
+    "CompletionGateError",
     "GateDecision",
     "ReleasePolicy",
-    "CompletionGateError",
 ]
 
 
@@ -56,7 +56,7 @@ class CompletionGateError(Exception):
         message: str,
         *,
         coa_id: str,
-        missing_fields: Optional[list[str]] = None,
+        missing_fields: list[str] | None = None,
     ) -> None:
         super().__init__(message)
         self.coa_id = coa_id
@@ -82,7 +82,7 @@ class ReleasePolicy:
     #: Reason string returned when the upstream completion status is not final.
     REASON_NOT_COMPLETED = "COA is incomplete; blocked until the upstream completion status is 'completed'"
 
-    def __init__(self, gate: Optional[CompletionGate] = None) -> None:
+    def __init__(self, gate: CompletionGate | None = None) -> None:
         self._gate = gate or CompletionGate()
 
     @property

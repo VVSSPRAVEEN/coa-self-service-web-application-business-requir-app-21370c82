@@ -38,7 +38,7 @@ class RetryPolicy:
 
         raw_delay = self.base_delay * (self.multiplier ** attempt)
         capped_delay = min(raw_delay, self.max_delay)
-        jitter_value = random.uniform(0, self.jitter)  # noqa: S311
+        jitter_value = random.uniform(0, self.jitter)
         return capped_delay + jitter_value
 
     def should_retry(self, attempt: int) -> bool:

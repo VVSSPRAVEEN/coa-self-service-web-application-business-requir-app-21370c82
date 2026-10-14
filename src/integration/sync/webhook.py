@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
-from typing import Any, Dict, List
+from typing import Any
 
 from src.integration.sync.models import CoaStatus, StatusDelta
 from src.integration.sync.status_sync import StatusSyncService, SyncResult
@@ -16,7 +16,7 @@ class WebhookValidationError(Exception):
     """Raised when webhook payload validation fails."""
 
 
-def validate_webhook_payload(payload: Dict[str, Any]) -> None:
+def validate_webhook_payload(payload: dict[str, Any]) -> None:
     """Validate incoming webhook payload structure.
 
     Args:
@@ -45,7 +45,7 @@ def validate_webhook_payload(payload: Dict[str, Any]) -> None:
         raise WebhookValidationError("sequence_id must be an integer")
 
 
-def parse_status_delta(payload: Dict[str, Any]) -> StatusDelta:
+def parse_status_delta(payload: dict[str, Any]) -> StatusDelta:
     """Parse a validated webhook payload into a StatusDelta.
 
     Args:
@@ -70,7 +70,7 @@ def parse_status_delta(payload: Dict[str, Any]) -> StatusDelta:
 
 
 def handle_status_webhook(
-    payload: Dict[str, Any],
+    payload: dict[str, Any],
     sync_service: StatusSyncService,
 ) -> SyncResult:
     """Process an incoming status webhook from JDE or Bottomline.
@@ -94,9 +94,9 @@ def handle_status_webhook(
 
 
 def handle_batch_webhook(
-    payloads: List[Dict[str, Any]],
+    payloads: list[dict[str, Any]],
     sync_service: StatusSyncService,
-) -> List[SyncResult]:
+) -> list[SyncResult]:
     """Process a batch of incoming status webhooks.
 
     Invalid payloads are logged and skipped rather than failing the batch.
@@ -108,7 +108,7 @@ def handle_batch_webhook(
     Returns:
         List of SyncResults for successfully processed deltas.
     """
-    results: List[SyncResult] = []
+    results: list[SyncResult] = []
     for payload in payloads:
         try:
             result = handle_status_webhook(payload, sync_service)

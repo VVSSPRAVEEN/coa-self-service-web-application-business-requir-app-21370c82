@@ -30,8 +30,9 @@ from __future__ import annotations
 import json
 import threading
 import uuid
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Mapping, Optional, Protocol, Sequence, Tuple
+from collections.abc import Mapping, Sequence
+from datetime import UTC, datetime
+from typing import Any, Protocol
 
 from src.audit.trail.models import AuditEventType, AuditLogEntry
 from src.core.postgres import (
@@ -52,7 +53,7 @@ __all__ = [
 #: The ``audit_events`` columns this storage reads and writes, in the order every
 #: ``SELECT`` list uses. Positional DB-API rows are mapped through this tuple, so
 #: the order is part of the contract.
-_ENTRY_COLUMNS: Tuple[str, ...] = (
+_ENTRY_COLUMNS: tuple[str, ...] = (
     "external_event_id",
     "event_type",
     "actor_id",
@@ -83,16 +84,16 @@ class AuditStorageBackend(Protocol):
     def append(self, entry: AuditLogEntry) -> None:
         ...
 
-    def get_all(self) -> List[AuditLogEntry]:
+    def get_all(self) -> list[AuditLogEntry]:
         ...
 
-    def get_by_resource(self, resource_id: str) -> List[AuditLogEntry]:
+    def get_by_resource(self, resource_id: str) -> list[AuditLogEntry]:
         ...
 
-    def get_by_type(self, event_type: AuditEventType) -> List[AuditLogEntry]:
+    def get_by_type(self, event_type: AuditEventType) -> list[AuditLogEntry]:
         ...
 
-    def get_older_than(self, cutoff: datetime) -> List[AuditLogEntry]:
+    def get_older_than(self, cutoff: datetime) -> list[AuditLogEntry]:
         ...
 
     def count(self) -> int:
@@ -108,26 +109,26 @@ class InMemoryAuditStorage:
     """
 
     def __init__(self) -> None:
-        self._entries: List[AuditLogEntry] = []
+        self._entries: list[AuditLogEntry] = []
         self._lock = threading.Lock()
 
     def append(self, entry: AuditLogEntry) -> None:
         with self._lock:
             self._entries.append(entry)
 
-    def get_all(self) -> List[AuditLogEntry]:
+    def get_all(self) -> list[AuditLogEntry]:
         with self._lock:
             return list(self._entries)
 
-    def get_by_resource(self, resource_id: str) -> List[AuditLogEntry]:
+    def get_by_resource(self, resource_id: str) -> list[AuditLogEntry]:
         with self._lock:
             return [e for e in self._entries if e.resource_id == resource_id]
 
-    def get_by_type(self, event_type: AuditEventType) -> List[AuditLogEntry]:
+    def get_by_type(self, event_type: AuditEventType) -> list[AuditLogEntry]:
         with self._lock:
             return [e for e in self._entries if e.event_type == event_type]
 
-    def get_older_than(self, cutoff: datetime) -> List[AuditLogEntry]:
+    def get_older_than(self, cutoff: datetime) -> list[AuditLogEntry]:
         with self._lock:
             return [e for e in self._entries if e.timestamp < cutoff]
 
@@ -136,7 +137,7 @@ class InMemoryAuditStorage:
             return len(self._entries)
 
 
-def _row_values(row: Any) -> Dict[str, Any]:
+def _row_values(row: Any) -> dict[str, Any]:
     """Normalise a DB-API row into a ``{column: value}`` mapping."""
     if isinstance(row, Mapping):
         return dict(row)
@@ -151,11 +152,11 @@ def _as_utc(value: Any) -> datetime:
     timestamp, so a naive value is pinned to UTC rather than left ambiguous.
     """
     if isinstance(value, datetime):
-        return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+        return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
     if isinstance(value, str):
         parsed = datetime.fromisoformat(value)
-        return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=timezone.utc)
-    return datetime.now(timezone.utc)
+        return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=UTC)
+    return datetime.now(UTC)
 
 
 def _row_to_entry(row: Any) -> AuditLogEntry:
@@ -241,11 +242,10 @@ class PostgresAuditStorage:
             "ip_address": entry.ip_address,
             "sequence_number": entry.sequence_number,
         }
-        with connection(self._target) as conn:
-            with conn.cursor() as cursor:
-                sequence = self._next_sequence(cursor)
-                cursor.execute(
-                    """
+        with connection(self._target) as conn, conn.cursor() as cursor:
+            sequence = self._next_sequence(cursor)
+            cursor.execute(
+                """
                     INSERT INTO audit_events (
                         event_id, external_event_id, event_type, actor_id, coa_id,
                         occurred_at, payload_json, prev_hash, entry_hash,
@@ -253,62 +253,60 @@ class PostgresAuditStorage:
                     )
                     VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s, %s, %s, %s)
                     """,
-                    (
-                        _event_id_column(entry.event_id),
-                        entry.event_id,
-                        entry.event_type.value,
-                        entry.user_sub,
-                        entry.resource_id,
-                        entry.timestamp,
-                        json.dumps(payload, default=str),
-                        entry.previous_hash,
-                        entry.entry_hash,
-                        sequence,
-                        entry.details,
-                        entry.ip_address,
-                    ),
-                )
+                (
+                    _event_id_column(entry.event_id),
+                    entry.event_id,
+                    entry.event_type.value,
+                    entry.user_sub,
+                    entry.resource_id,
+                    entry.timestamp,
+                    json.dumps(payload, default=str),
+                    entry.previous_hash,
+                    entry.entry_hash,
+                    sequence,
+                    entry.details,
+                    entry.ip_address,
+                ),
+            )
 
-    def _query(self, where: str, params: Sequence[Any]) -> List[AuditLogEntry]:
+    def _query(self, where: str, params: Sequence[Any]) -> list[AuditLogEntry]:
         """Run a filtered read in chain order and map every row."""
-        with connection(self._target) as conn:
-            with conn.cursor() as cursor:
-                cursor.execute(
-                    f"SELECT {_SELECT_LIST} FROM audit_events {where} "
-                    f"ORDER BY sequence_number",
-                    tuple(params),
-                )
-                rows = cursor.fetchall() or []
+        with connection(self._target) as conn, conn.cursor() as cursor:
+            cursor.execute(
+                f"SELECT {_SELECT_LIST} FROM audit_events {where} "
+                f"ORDER BY sequence_number",
+                tuple(params),
+            )
+            rows = cursor.fetchall() or []
         return [_row_to_entry(row) for row in rows]
 
-    def get_all(self) -> List[AuditLogEntry]:
+    def get_all(self) -> list[AuditLogEntry]:
         """Return the whole trail in chain order."""
         return self._query("", ())
 
-    def get_by_resource(self, resource_id: str) -> List[AuditLogEntry]:
+    def get_by_resource(self, resource_id: str) -> list[AuditLogEntry]:
         """Return every entry recorded against ``resource_id``, in chain order."""
         return self._query("WHERE coa_id = %s", (resource_id,))
 
-    def get_by_type(self, event_type: AuditEventType) -> List[AuditLogEntry]:
+    def get_by_type(self, event_type: AuditEventType) -> list[AuditLogEntry]:
         """Return every entry of ``event_type``, in chain order."""
         value = getattr(event_type, "value", event_type)
         return self._query("WHERE event_type = %s", (str(value),))
 
-    def get_older_than(self, cutoff: datetime) -> List[AuditLogEntry]:
+    def get_older_than(self, cutoff: datetime) -> list[AuditLogEntry]:
         """Return every entry older than ``cutoff``, in chain order."""
         return self._query("WHERE occurred_at < %s", (cutoff,))
 
     def count(self) -> int:
         """Return the total number of entries in the trail."""
-        with connection(self._target) as conn:
-            with conn.cursor() as cursor:
-                cursor.execute("SELECT count(*) AS entry_count FROM audit_events")
-                row = cursor.fetchone()
+        with connection(self._target) as conn, conn.cursor() as cursor:
+            cursor.execute("SELECT count(*) AS entry_count FROM audit_events")
+            row = cursor.fetchone()
         return int(row["entry_count"] if isinstance(row, Mapping) else row[0])
 
 
 def build_audit_storage(
-    env: Optional[Mapping[str, str]] = None,
+    env: Mapping[str, str] | None = None,
 ) -> AuditStorageBackend:
     """Return the audit storage backend this process should use.
 
@@ -338,26 +336,26 @@ class AuditRepository:
     Enforces that no update or delete path exists.
     """
 
-    def __init__(self, storage: Optional[AuditStorageBackend] = None) -> None:
+    def __init__(self, storage: AuditStorageBackend | None = None) -> None:
         self._storage: AuditStorageBackend = storage or build_audit_storage()
 
     def append(self, entry: AuditLogEntry) -> None:
         """Append an entry to the audit log. This is the only write path."""
         self._storage.append(entry)
 
-    def get_all(self) -> List[AuditLogEntry]:
+    def get_all(self) -> list[AuditLogEntry]:
         """Retrieve all entries in insertion order."""
         return self._storage.get_all()
 
-    def get_by_resource(self, resource_id: str) -> List[AuditLogEntry]:
+    def get_by_resource(self, resource_id: str) -> list[AuditLogEntry]:
         """Retrieve all entries for a specific resource."""
         return self._storage.get_by_resource(resource_id)
 
-    def get_by_type(self, event_type: AuditEventType) -> List[AuditLogEntry]:
+    def get_by_type(self, event_type: AuditEventType) -> list[AuditLogEntry]:
         """Retrieve all entries of a specific event type."""
         return self._storage.get_by_type(event_type)
 
-    def get_older_than(self, cutoff: datetime) -> List[AuditLogEntry]:
+    def get_older_than(self, cutoff: datetime) -> list[AuditLogEntry]:
         """Retrieve entries older than the given cutoff datetime."""
         return self._storage.get_older_than(cutoff)
 

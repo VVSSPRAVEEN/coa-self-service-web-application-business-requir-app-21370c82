@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
-from typing import Optional
 
 
 @dataclass(frozen=True)
@@ -15,8 +14,8 @@ class MissingCoaRow:
     vessel: str
     voyage: str
     counterparty: str
-    priority: Optional[str]
-    required_ship_date: Optional[date]
+    priority: str | None
+    required_ship_date: date | None
     age_days: int
     blocking_reason: str
 

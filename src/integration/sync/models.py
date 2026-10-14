@@ -5,7 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Dict, List, Optional
 
 
 class CoaStatus(str, Enum):
@@ -25,7 +24,7 @@ class CoaStatus(str, Enum):
 
 
 # Monotonic ordering: index represents the progression level
-STATUS_TRANSITION_ORDER: List[CoaStatus] = [
+STATUS_TRANSITION_ORDER: list[CoaStatus] = [
     CoaStatus.DRAFT,
     CoaStatus.SUBMITTED,
     CoaStatus.UNDER_REVIEW,
@@ -40,7 +39,7 @@ TERMINAL_STATUSES: frozenset[CoaStatus] = frozenset(
 )
 
 # Valid transition map: from_status -> set of allowed next statuses
-VALID_TRANSITIONS: Dict[CoaStatus, frozenset[CoaStatus]] = {
+VALID_TRANSITIONS: dict[CoaStatus, frozenset[CoaStatus]] = {
     CoaStatus.DRAFT: frozenset({CoaStatus.SUBMITTED, CoaStatus.REJECTED}),
     CoaStatus.SUBMITTED: frozenset({CoaStatus.UNDER_REVIEW, CoaStatus.REJECTED}),
     CoaStatus.UNDER_REVIEW: frozenset({CoaStatus.APPROVED, CoaStatus.REJECTED}),
@@ -107,4 +106,4 @@ class SyncResult:
     previous_status: CoaStatus
     new_status: CoaStatus
     applied: bool
-    reason: Optional[str] = None
+    reason: str | None = None

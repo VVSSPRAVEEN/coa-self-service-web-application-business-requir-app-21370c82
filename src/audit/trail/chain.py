@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import hashlib
-from typing import List, Optional
 
 from src.audit.trail.models import AuditLogEntry
 
@@ -61,7 +60,7 @@ class AuditChain:
         return sealed
 
     @staticmethod
-    def verify_integrity(entries: List[AuditLogEntry]) -> tuple[bool, Optional[int]]:
+    def verify_integrity(entries: list[AuditLogEntry]) -> tuple[bool, int | None]:
         """Verify the integrity of an ordered list of audit entries.
 
         Checks:
@@ -97,15 +96,15 @@ class AuditChain:
 
     @staticmethod
     def detect_tampering(
-        original_entries: List[AuditLogEntry],
-        suspect_entries: List[AuditLogEntry],
-    ) -> List[int]:
+        original_entries: list[AuditLogEntry],
+        suspect_entries: list[AuditLogEntry],
+    ) -> list[int]:
         """Compare two chains and return indices where entries differ.
 
         Useful for detecting mutations or reordering between a trusted
         snapshot and current state.
         """
-        tampered_indices: List[int] = []
+        tampered_indices: list[int] = []
         max_len = max(len(original_entries), len(suspect_entries))
 
         for idx in range(max_len):

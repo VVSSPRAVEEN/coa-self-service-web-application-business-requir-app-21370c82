@@ -25,17 +25,18 @@ guaranteed to hold identically on the live path.
 from __future__ import annotations
 
 import os
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Any, Callable, Mapping, Optional, Protocol, Sequence
+from typing import Any, Protocol
 
 from src.validation.completion_gate import COMPLETE, INCOMPLETE, CompletionGate, ValidationOutcome
 
 from .client import (
-    ExpectedFieldProvider,
     JDE_BASE_URL_ENV,
+    ExpectedFieldProvider,
+    HttpJSONTransport,
     JDEError,
     JDETransport,
-    HttpJSONTransport,
     coerce_field_names,
 )
 from .reader import JDEFieldReader
@@ -169,7 +170,7 @@ class EnvFieldCatalog:
     responsible for configuring the catalogs it needs.
     """
 
-    def __init__(self, env: Optional[Mapping[str, str]] = None) -> None:
+    def __init__(self, env: Mapping[str, str] | None = None) -> None:
         self._env = os.environ if env is None else env
 
     def variable_name(self, catalog_id: str) -> str:
@@ -221,7 +222,7 @@ class RDSMetadataRepository:
             JDEError: If the provider itself fails.
         """
         key = str(catalog_id or "").strip() or DEFAULT_FIELD_CATALOG_ID
-        getter: Optional[Callable[[str], Any]] = getattr(
+        getter: Callable[[str], Any] | None = getattr(
             self._provider, "get_expected_fields", None
         )
         reader = getter if callable(getter) else self._provider
@@ -290,7 +291,7 @@ class JDEClient:
         """Read the live lifecycle status for ``coa_id`` out of JDE."""
         return self._status.fetch_coa_status(coa_id)
 
-    def expected_fields(self, catalog_id: Optional[str] = None) -> list[str]:
+    def expected_fields(self, catalog_id: str | None = None) -> list[str]:
         """Return the expected field names for ``catalog_id`` or the configured one."""
         return self._catalog.get_expected_fields(catalog_id or self._catalog_id)
 
@@ -309,10 +310,10 @@ class JDEClient:
     def from_env(
         cls,
         *,
-        env: Optional[Mapping[str, str]] = None,
-        catalog_id: Optional[str] = None,
-        transport: Optional[JDETransport] = None,
-    ) -> "JDEClient":
+        env: Mapping[str, str] | None = None,
+        catalog_id: str | None = None,
+        transport: JDETransport | None = None,
+    ) -> JDEClient:
         """Build the client from the deployment's environment.
 
         Args:
@@ -338,7 +339,7 @@ class JDEClient:
         )
 
 
-def build_client_from_env() -> Optional[JDEClient]:
+def build_client_from_env() -> JDEClient | None:
     """Return a :class:`JDEClient`, or ``None`` when JDE is not configured.
 
     ``JDE_BASE_URL`` decides: when it is unset the deployment has deliberately not

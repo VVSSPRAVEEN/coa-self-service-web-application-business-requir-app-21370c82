@@ -44,8 +44,9 @@ from __future__ import annotations
 
 import asyncio
 import uuid
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Mapping, Optional, Protocol, Sequence, Union
+from collections.abc import Mapping, Sequence
+from datetime import UTC, datetime
+from typing import Any, Protocol
 
 from src.admin.plant_mapping.models import (
     PlantMapping,
@@ -95,18 +96,18 @@ class PlantMappingStore(Protocol):
     async def create(self, payload: PlantMappingCreate) -> PlantMapping:
         ...
 
-    async def get_by_id(self, mapping_id: str) -> Optional[PlantMapping]:
+    async def get_by_id(self, mapping_id: str) -> PlantMapping | None:
         ...
 
-    async def list_all(self) -> List[PlantMapping]:
+    async def list_all(self) -> list[PlantMapping]:
         ...
 
-    async def get_by_source_plant(self, source_plant_id: str) -> List[PlantMapping]:
+    async def get_by_source_plant(self, source_plant_id: str) -> list[PlantMapping]:
         ...
 
     async def update(
         self, mapping_id: str, payload: PlantMappingUpdate
-    ) -> Optional[PlantMapping]:
+    ) -> PlantMapping | None:
         ...
 
     async def delete(self, mapping_id: str) -> bool:
@@ -126,7 +127,7 @@ def _new_mapping_id() -> str:
     return str(factory())
 
 
-def _row_values(row: Any) -> Dict[str, Any]:
+def _row_values(row: Any) -> dict[str, Any]:
     """Normalise a DB-API row into a ``{column: value}`` mapping.
 
     Accepts either a mapping (a ``RealDictCursor`` row, or a canned row from a
@@ -147,16 +148,16 @@ def _as_utc(value: Any) -> datetime:
     """
     if isinstance(value, datetime):
         return (
-            value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+            value if value.tzinfo is not None else value.replace(tzinfo=UTC)
         )
     if isinstance(value, str):
         parsed = datetime.fromisoformat(value)
         return (
             parsed
             if parsed.tzinfo is not None
-            else parsed.replace(tzinfo=timezone.utc)
+            else parsed.replace(tzinfo=UTC)
         )
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _row_to_mapping(row: Any) -> PlantMapping:
@@ -175,7 +176,7 @@ def _row_to_mapping(row: Any) -> PlantMapping:
     )
 
 
-def _fetch_all(cursor: Any, sql: str, params: Sequence[Any]) -> List[PlantMapping]:
+def _fetch_all(cursor: Any, sql: str, params: Sequence[Any]) -> list[PlantMapping]:
     """Run ``sql`` and map every returned row."""
     cursor.execute(sql, tuple(params))
     rows = cursor.fetchall() or []
@@ -184,7 +185,7 @@ def _fetch_all(cursor: Any, sql: str, params: Sequence[Any]) -> List[PlantMappin
 
 def _fetch_one(
     cursor: Any, sql: str, params: Sequence[Any]
-) -> Optional[PlantMapping]:
+) -> PlantMapping | None:
     """Run ``sql`` and map the single returned row, or ``None`` when there is none."""
     cursor.execute(sql, tuple(params))
     row = cursor.fetchone()
@@ -202,11 +203,11 @@ class PlantMappingRepository:
     """
 
     def __init__(self) -> None:
-        self._store: Dict[str, PlantMapping] = {}
-        self._order: List[str] = []
+        self._store: dict[str, PlantMapping] = {}
+        self._order: list[str] = []
 
     async def create(self, payload: PlantMappingCreate) -> PlantMapping:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         mapping = PlantMapping(
             id=_new_mapping_id(),
             source_plant_id=payload.source_plant_id,
@@ -221,17 +222,17 @@ class PlantMappingRepository:
         self._order.append(mapping.id)
         return mapping
 
-    async def get_by_id(self, mapping_id: str) -> Optional[PlantMapping]:
+    async def get_by_id(self, mapping_id: str) -> PlantMapping | None:
         return self._store.get(mapping_id)
 
-    async def list_all(self) -> List[PlantMapping]:
+    async def list_all(self) -> list[PlantMapping]:
         return [
             self._store[key]
             for key in self._order
             if key in self._store
         ]
 
-    async def get_by_source_plant(self, source_plant_id: str) -> List[PlantMapping]:
+    async def get_by_source_plant(self, source_plant_id: str) -> list[PlantMapping]:
         return [
             mapping
             for mapping in await self.list_all()
@@ -240,7 +241,7 @@ class PlantMappingRepository:
 
     async def update(
         self, mapping_id: str, payload: PlantMappingUpdate
-    ) -> Optional[PlantMapping]:
+    ) -> PlantMapping | None:
         existing = self._store.get(mapping_id)
         if existing is None:
             return None
@@ -249,7 +250,7 @@ class PlantMappingRepository:
         if payload.is_active is not None:
             existing.is_active = payload.is_active
         existing.updated_by = payload.updated_by
-        existing.updated_at = datetime.now(timezone.utc)
+        existing.updated_at = datetime.now(UTC)
         self._store[mapping_id] = existing
         return existing
 
@@ -277,19 +278,18 @@ class PostgresPlantMappingRepository:
     commits on success and closes a connection this class opened.
     """
 
-    def __init__(self, dsn_or_conn: Union[str, Any]) -> None:
+    def __init__(self, dsn_or_conn: str | Any) -> None:
         self._target = dsn_or_conn
 
     # -- synchronous core ----------------------------------------------------
 
     def create_sync(self, payload: PlantMappingCreate) -> PlantMapping:
         """Insert one mapping and return it as read back from the database."""
-        now = datetime.now(timezone.utc)
-        with connection(self._target) as conn:
-            with conn.cursor() as cursor:
-                mapping = _fetch_one(
-                    cursor,
-                    f"""
+        now = datetime.now(UTC)
+        with connection(self._target) as conn, conn.cursor() as cursor:
+            mapping = _fetch_one(
+                cursor,
+                f"""
                     INSERT INTO plant_mappings (
                         mapping_uuid, source_plant_id, target_plant_id, active,
                         created_by, updated_by, created_at, updated_at
@@ -297,64 +297,60 @@ class PostgresPlantMappingRepository:
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                     RETURNING {_SELECT_LIST}
                     """,
-                    (
-                        # The model's own id factory, so both stores mint the same
-                        # identifier format.
-                        _new_mapping_id(),
-                        payload.source_plant_id,
-                        payload.sister_plant_id,
-                        True,
-                        payload.created_by,
-                        payload.created_by,
-                        now,
-                        now,
-                    ),
-                )
+                (
+                    # The model's own id factory, so both stores mint the same
+                    # identifier format.
+                    _new_mapping_id(),
+                    payload.source_plant_id,
+                    payload.sister_plant_id,
+                    True,
+                    payload.created_by,
+                    payload.created_by,
+                    now,
+                    now,
+                ),
+            )
         if mapping is None:  # INSERT ... RETURNING always yields one row.
             raise RuntimeError("plant_mappings INSERT ... RETURNING produced no row")
         return mapping
 
-    def get_by_id_sync(self, mapping_id: str) -> Optional[PlantMapping]:
+    def get_by_id_sync(self, mapping_id: str) -> PlantMapping | None:
         """Return the mapping with ``mapping_uuid``, or ``None`` when unknown."""
-        with connection(self._target) as conn:
-            with conn.cursor() as cursor:
-                return _fetch_one(
-                    cursor,
-                    f"SELECT {_SELECT_LIST} FROM plant_mappings "
-                    f"WHERE mapping_uuid = %s",
-                    (mapping_id,),
-                )
+        with connection(self._target) as conn, conn.cursor() as cursor:
+            return _fetch_one(
+                cursor,
+                f"SELECT {_SELECT_LIST} FROM plant_mappings "
+                f"WHERE mapping_uuid = %s",
+                (mapping_id,),
+            )
 
-    def list_all_sync(self) -> List[PlantMapping]:
+    def list_all_sync(self) -> list[PlantMapping]:
         """Return every mapping, in insertion order."""
-        with connection(self._target) as conn:
-            with conn.cursor() as cursor:
-                return _fetch_all(
-                    cursor,
-                    f"SELECT {_SELECT_LIST} FROM plant_mappings ORDER BY id",
-                    (),
-                )
+        with connection(self._target) as conn, conn.cursor() as cursor:
+            return _fetch_all(
+                cursor,
+                f"SELECT {_SELECT_LIST} FROM plant_mappings ORDER BY id",
+                (),
+            )
 
-    def get_by_source_plant_sync(self, source_plant_id: str) -> List[PlantMapping]:
+    def get_by_source_plant_sync(self, source_plant_id: str) -> list[PlantMapping]:
         """Return every mapping declared for ``source_plant_id``."""
-        with connection(self._target) as conn:
-            with conn.cursor() as cursor:
-                return _fetch_all(
-                    cursor,
-                    f"SELECT {_SELECT_LIST} FROM plant_mappings "
-                    f"WHERE source_plant_id = %s ORDER BY id",
-                    (source_plant_id,),
-                )
+        with connection(self._target) as conn, conn.cursor() as cursor:
+            return _fetch_all(
+                cursor,
+                f"SELECT {_SELECT_LIST} FROM plant_mappings "
+                f"WHERE source_plant_id = %s ORDER BY id",
+                (source_plant_id,),
+            )
 
     def update_sync(
         self, mapping_id: str, payload: PlantMappingUpdate
-    ) -> Optional[PlantMapping]:
+    ) -> PlantMapping | None:
         """Apply the non-null fields of ``payload`` to one mapping row."""
-        with connection(self._target) as conn:
-            with conn.cursor() as cursor:
-                return _fetch_one(
-                    cursor,
-                    f"""
+        with connection(self._target) as conn, conn.cursor() as cursor:
+            return _fetch_one(
+                cursor,
+                f"""
                     UPDATE plant_mappings
                        SET target_plant_id = COALESCE(%s, target_plant_id),
                            active          = COALESCE(%s, active),
@@ -363,25 +359,24 @@ class PostgresPlantMappingRepository:
                      WHERE mapping_uuid = %s
                     RETURNING {_SELECT_LIST}
                     """,
-                    (
-                        payload.sister_plant_id,
-                        payload.is_active,
-                        payload.updated_by,
-                        datetime.now(timezone.utc),
-                        mapping_id,
-                    ),
-                )
+                (
+                    payload.sister_plant_id,
+                    payload.is_active,
+                    payload.updated_by,
+                    datetime.now(UTC),
+                    mapping_id,
+                ),
+            )
 
     def delete_sync(self, mapping_id: str) -> bool:
         """Delete one mapping row, returning whether a row was removed."""
-        with connection(self._target) as conn:
-            with conn.cursor() as cursor:
-                cursor.execute(
-                    "DELETE FROM plant_mappings WHERE mapping_uuid = %s "
-                    "RETURNING mapping_uuid",
-                    (mapping_id,),
-                )
-                return cursor.fetchone() is not None
+        with connection(self._target) as conn, conn.cursor() as cursor:
+            cursor.execute(
+                "DELETE FROM plant_mappings WHERE mapping_uuid = %s "
+                "RETURNING mapping_uuid",
+                (mapping_id,),
+            )
+            return cursor.fetchone() is not None
 
     # -- async surface -------------------------------------------------------
 
@@ -389,21 +384,21 @@ class PostgresPlantMappingRepository:
         """Insert one mapping without blocking the event loop."""
         return await asyncio.to_thread(self.create_sync, payload)
 
-    async def get_by_id(self, mapping_id: str) -> Optional[PlantMapping]:
+    async def get_by_id(self, mapping_id: str) -> PlantMapping | None:
         """Read one mapping without blocking the event loop."""
         return await asyncio.to_thread(self.get_by_id_sync, mapping_id)
 
-    async def list_all(self) -> List[PlantMapping]:
+    async def list_all(self) -> list[PlantMapping]:
         """Read every mapping without blocking the event loop."""
         return await asyncio.to_thread(self.list_all_sync)
 
-    async def get_by_source_plant(self, source_plant_id: str) -> List[PlantMapping]:
+    async def get_by_source_plant(self, source_plant_id: str) -> list[PlantMapping]:
         """Read one source plant's mappings without blocking the event loop."""
         return await asyncio.to_thread(self.get_by_source_plant_sync, source_plant_id)
 
     async def update(
         self, mapping_id: str, payload: PlantMappingUpdate
-    ) -> Optional[PlantMapping]:
+    ) -> PlantMapping | None:
         """Update one mapping without blocking the event loop."""
         return await asyncio.to_thread(self.update_sync, mapping_id, payload)
 
@@ -413,7 +408,7 @@ class PostgresPlantMappingRepository:
 
 
 def build_plant_mapping_repository(
-    env: Optional[Mapping[str, str]] = None,
+    env: Mapping[str, str] | None = None,
 ) -> PlantMappingStore:
     """Return the durable store, or the memory-pinned fallback.
 

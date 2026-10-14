@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import List
-
 from src.integration.bottomline.models import BottomlineRawRecord, CostObjectLineItem
 
 
@@ -12,8 +10,8 @@ class TransformationError(Exception):
 
 
 def transform_to_coa_records(
-    raw_records: List[BottomlineRawRecord],
-) -> List[CostObjectLineItem]:
+    raw_records: list[BottomlineRawRecord],
+) -> list[CostObjectLineItem]:
     """Transform parsed Bottomline records into canonical CostObjectLineItem models.
 
     Applies format transformation from Bottomline flat layout to the internal
@@ -28,7 +26,7 @@ def transform_to_coa_records(
     Raises:
         TransformationError: If a record fails validation during transformation.
     """
-    transformed: List[CostObjectLineItem] = []
+    transformed: list[CostObjectLineItem] = []
 
     for record in raw_records:
         if not record.coa_number:

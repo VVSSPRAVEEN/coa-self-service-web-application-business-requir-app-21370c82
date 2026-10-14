@@ -20,4 +20,6 @@ COPY src/ ./src/
 COPY tests/ ./tests/
 COPY pyproject.toml ./
 
+RUN useradd --create-home --uid 10001 runner
+USER runner
 CMD ["ruff", "check", "src/", "tests/"]

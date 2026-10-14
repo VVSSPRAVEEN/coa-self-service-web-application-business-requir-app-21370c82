@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import List
-
 from fastapi import APIRouter, Depends
 
 from src.validation.sister_plant.models import (
@@ -31,8 +29,8 @@ async def validate_cross_plant_print(
     return await service.validate_and_audit(request)
 
 
-@router.get("/audit-log", response_model=List[CrossPlantPrintAuditEntry])
+@router.get("/audit-log", response_model=list[CrossPlantPrintAuditEntry])
 async def get_print_audit_log(
     service: SisterPlantPrintService = Depends(get_sister_plant_service),  # noqa: B008
-) -> List[CrossPlantPrintAuditEntry]:
+) -> list[CrossPlantPrintAuditEntry]:
     return await service.get_audit_log()

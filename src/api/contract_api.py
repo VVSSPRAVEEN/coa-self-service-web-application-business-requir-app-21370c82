@@ -43,16 +43,16 @@ from __future__ import annotations
 
 import logging
 import os
+from collections.abc import Mapping
 from dataclasses import dataclass, replace
-from datetime import datetime, timedelta, timezone
-from typing import Any, Mapping, Optional
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from src.admin.plant_mapping.router import get_plant_mapping_service
-
 from src.admin.users import (
     DuplicateUserError,
     InvalidRoleError,
@@ -144,7 +144,7 @@ class LoginRequest(BaseModel):
 class DownloadRequest(BaseModel):
     """Body of ``POST /coas/{coa_id}/download``; the body itself is optional."""
 
-    expiry_seconds: Optional[int] = Field(
+    expiry_seconds: int | None = Field(
         None,
         ge=1,
         le=MAX_DOWNLOAD_EXPIRY_SECONDS,
@@ -161,7 +161,7 @@ class PrintContractRequest(BaseModel):
         min_length=1,
         description="Short-lived FR8 re-auth credential for this user/COA pair",
     )
-    printing_plant: Optional[str] = Field(
+    printing_plant: str | None = Field(
         None,
         description="Plant performing the print; enables the FR9 cross-plant check",
     )
@@ -181,12 +181,12 @@ class CreateUserPayload(BaseModel):
     """Body of ``POST /admin/users``."""
 
     username: str = Field(..., min_length=1)
-    email: Optional[str] = None
+    email: str | None = None
     role: str = Field(
         ...,
         description="One of 'internal', '3pl' or 'customer'; validated by the registry",
     )
-    organization: Optional[str] = None
+    organization: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -203,7 +203,7 @@ def _field(record: Any, name: str) -> Any:
     return getattr(record, name, None)
 
 
-def _text(value: Any) -> Optional[str]:
+def _text(value: Any) -> str | None:
     """Render an enum/str/None field as a plain string (or ``None``)."""
     if value is None:
         return None
@@ -212,7 +212,7 @@ def _text(value: Any) -> Optional[str]:
     return text or None
 
 
-def _isoformat(value: Any) -> Optional[str]:
+def _isoformat(value: Any) -> str | None:
     """Render a datetime as ISO-8601, passing strings through untouched."""
     if value is None:
         return None
@@ -223,7 +223,7 @@ def _isoformat(value: Any) -> Optional[str]:
     return text or None
 
 
-def _completion_status_value(record: Any) -> Optional[str]:
+def _completion_status_value(record: Any) -> str | None:
     """Return the COA's completion status as the wire string."""
     return _text(_field(record, "completion_status")) or _text(_field(record, "status"))
 
@@ -375,8 +375,8 @@ def _audit_failed(coa_id: str, exc: BaseException) -> JSONResponse:
 
 
 def _role_guard(
-    presented_role: Optional[str], resource: str, action: str
-) -> Optional[JSONResponse]:
+    presented_role: str | None, resource: str, action: str
+) -> JSONResponse | None:
     """Apply RBAC when the caller states its role in ``X-Role``.
 
     The contract authenticates by token exchange, so a role header is an
@@ -401,7 +401,7 @@ def _role_guard(
 # ---------------------------------------------------------------------------
 
 
-def build_jde_client() -> Optional[JDEClient]:
+def build_jde_client() -> JDEClient | None:
     """Build the live-JDE client the completion gate reads through (FR6/FR14).
 
     Returns ``None`` when this deployment has not configured ``JDE_BASE_URL``,
@@ -429,7 +429,7 @@ class GateEvaluation:
 
     outcome: ValidationOutcome
     source: str
-    jde_error: Optional[str] = None
+    jde_error: str | None = None
 
     @property
     def degraded(self) -> bool:
@@ -477,7 +477,7 @@ def _evaluate_gate(coa_id: str, record: Any) -> GateEvaluation:
     return GateEvaluation(outcome, source="jde")
 
 
-def _s3_credentials() -> Optional[Any]:
+def _s3_credentials() -> Any | None:
     """Return signing credentials from the environment, or ``None``.
 
     Credentials are read from the standard AWS environment variables and are
@@ -490,7 +490,7 @@ def _s3_credentials() -> Optional[Any]:
         return None
     try:
         from botocore.credentials import Credentials  # type: ignore
-    except Exception:
+    except ImportError:
         logger.warning(
             "AWS credentials are configured but botocore is not installed; "
             "presigned URL signing is unavailable"
@@ -544,11 +544,11 @@ def _expires_in(result: Any, fallback: int) -> int:
     if expires_at is None:
         return fallback
     if isinstance(expires_at, datetime):
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         if expires_at.tzinfo is None:
-            expires_at = expires_at.replace(tzinfo=timezone.utc)
+            expires_at = expires_at.replace(tzinfo=UTC)
         seconds = (expires_at - now).total_seconds()
-        return max(1, int(round(seconds)))
+        return max(1, round(seconds))
     return fallback
 
 
@@ -584,22 +584,22 @@ async def login(payload: LoginRequest) -> dict[str, Any]:
 
 @router.get("/coas")
 async def list_coas(
-    search: Optional[str] = Query(None, description="COA number or customer search term"),
-    plant: Optional[str] = Query(
+    search: str | None = Query(None, description="COA number or customer search term"),
+    plant: str | None = Query(
         None,
         description="Plant of origin filter (FR4); passed through to the Mule search",
     ),
-    product: Optional[str] = Query(
+    product: str | None = Query(
         None,
         description="Product code filter (FR4); applied to each record's product_code",
     ),
-    status_filter: Optional[str] = Query(
+    status_filter: str | None = Query(
         None,
         alias="status",
         description="Completion status filter (pending, completed, failed)",
     ),
-    date_from: Optional[str] = Query(None, description="Issue date start (YYYY-MM-DD)"),
-    date_to: Optional[str] = Query(None, description="Issue date end (YYYY-MM-DD)"),
+    date_from: str | None = Query(None, description="Issue date start (YYYY-MM-DD)"),
+    date_to: str | None = Query(None, description="Issue date end (YYYY-MM-DD)"),
     page: int = Query(DEFAULT_PAGE, ge=1, description="Page number"),
     page_size: int = Query(DEFAULT_PAGE_SIZE, ge=1, le=MAX_PAGE_SIZE, description="Results per page"),
     service: COAService = Depends(get_coa_service),  # noqa: B008
@@ -667,8 +667,8 @@ async def get_coa_detail(
 @router.post("/coas/{coa_id}/download")
 async def download_coa(
     coa_id: str,
-    payload: Optional[DownloadRequest] = None,
-    x_user_id: Optional[str] = Header(
+    payload: DownloadRequest | None = None,
+    x_user_id: str | None = Header(
         None, alias="X-User-Id", description="Actor recorded in the audit trail"
     ),
     service: COAService = Depends(get_coa_service),  # noqa: B008
@@ -730,7 +730,7 @@ async def download_coa(
                 "gate_source": evaluation.source,
             },
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - every failure path retires the scope
         # The URL is never returned, and the scope minted a moment ago is
         # retired so the signature the client never received cannot be spent.
         store.retire(scope_id)
@@ -755,7 +755,7 @@ async def download_coa(
 
 async def _check_sister_plant(
     coa_id: str, printing_plant: str, target_plant: str, user_id: str
-) -> Optional[JSONResponse]:
+) -> JSONResponse | None:
     """Apply the FR9 cross-plant print check.
 
     Returns:
@@ -875,7 +875,7 @@ async def print_coa(
                 "gate_source": evaluation.source,
             },
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - audit failures must never mask the HTTP response
         return _audit_failed(coa_id, exc)
 
     body: dict[str, Any] = {
@@ -946,7 +946,7 @@ async def issue_print_reauth_token(coa_id: str, payload: PrintReauthRequest) -> 
         "user_id": payload.user_id,
         "reauth_token": reauth_token,
         "expires_at": (
-            datetime.now(timezone.utc)
+            datetime.now(UTC)
             + timedelta(seconds=PrintService.REAUTH_LIFETIME_SECONDS)
         ).isoformat(),
     }
@@ -1084,7 +1084,7 @@ def _user_dto(user: UserDTO) -> dict[str, Any]:
 @router.post("/admin/users", status_code=status.HTTP_201_CREATED)
 async def create_admin_user(
     payload: CreateUserPayload,
-    x_role: Optional[str] = Header(
+    x_role: str | None = Header(
         None, alias="X-Role", description="Role asserted by the caller for RBAC"
     ),
 ) -> Any:

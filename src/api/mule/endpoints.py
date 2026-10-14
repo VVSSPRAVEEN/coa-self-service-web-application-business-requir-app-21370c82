@@ -2,20 +2,22 @@ from __future__ import annotations
 
 import logging
 import os
+from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
-from typing import Any, AsyncIterator, Dict, List, Optional, Sequence
+from typing import Any
 
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, status
 
-# The contract router is imported first because this module mounts it on ``app``;
-# it reads the plant-mapping service dependency through the plant-mapping package
-# that is imported immediately below.
-from src.api.contract_api import router as contract_router
 from src.admin.plant_mapping import (
     PlantMapping,
     PlantMappingUpdate,
     register_plant_mappings,
 )
+
+# The contract router is imported first because this module mounts it on ``app``;
+# it reads the plant-mapping service dependency through the plant-mapping package
+# that is imported immediately below.
+from src.api.contract_api import router as contract_router
 from src.api.mule.coa_service import COAService, get_coa_service
 from src.discovery.search_filters import parse_filters
 
@@ -24,16 +26,16 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/coa", tags=["COA Search"])
 
 __all__ = [
-    "router",
-    "contract_router",
-    "app",
-    "paginate_results",
-    "search_coa",
-    "get_coa_status",
-    "get_coa_detail",
-    "mount_admin_routes",
     "PlantMapping",
     "PlantMappingUpdate",
+    "app",
+    "contract_router",
+    "get_coa_detail",
+    "get_coa_status",
+    "mount_admin_routes",
+    "paginate_results",
+    "router",
+    "search_coa",
 ]
 
 
@@ -42,7 +44,7 @@ def paginate_results(
     *,
     page: int,
     page_size: int,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Slice ``results`` into the requested page and describe the page envelope.
 
     Pagination lives here, beside the only endpoint that consumes it, so the
@@ -51,7 +53,7 @@ def paginate_results(
     objects are serialised through their own ``to_dict()`` so the response field
     names stay exactly those of the underlying COA model.
     """
-    items: List[Any] = list(results)
+    items: list[Any] = list(results)
     total = len(items)
     total_pages = (total + page_size - 1) // page_size if page_size else 0
     start = (page - 1) * page_size
@@ -70,15 +72,15 @@ def paginate_results(
 
 @router.get("/search")
 async def search_coa(
-    q: Optional[str] = Query(None, description="COA number or customer search term"),
-    plant: Optional[str] = Query(None, description="Plant code filter"),
-    start_date: Optional[str] = Query(None, description="Issue date start (YYYY-MM-DD)"),
-    end_date: Optional[str] = Query(None, description="Issue date end (YYYY-MM-DD)"),
-    status: Optional[str] = Query(None, description="Completion status filter"),
+    q: str | None = Query(None, description="COA number or customer search term"),
+    plant: str | None = Query(None, description="Plant code filter"),
+    start_date: str | None = Query(None, description="Issue date start (YYYY-MM-DD)"),
+    end_date: str | None = Query(None, description="Issue date end (YYYY-MM-DD)"),
+    status: str | None = Query(None, description="Completion status filter"),
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(25, ge=1, le=100, description="Results per page"),
     service: COAService = Depends(get_coa_service),  # noqa: B008
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Search and list COAs through the Mule API layer with filtering and pagination."""
     filters = parse_filters(
         q=q, plant=plant, start_date=start_date, end_date=end_date, status=status
@@ -91,7 +93,7 @@ async def search_coa(
 async def get_coa_status(
     coa_number: str,
     service: COAService = Depends(get_coa_service),  # noqa: B008
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Return the completion status of a COA (pending, completed, failed)."""
     coa = await service.get_coa_by_number(coa_number)
     if coa is None:
@@ -106,7 +108,7 @@ async def get_coa_status(
 async def get_coa_detail(
     coa_number: str,
     service: COAService = Depends(get_coa_service),  # noqa: B008
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Retrieve the full COA detail view including completion status."""
     coa = await service.get_coa_by_number(coa_number)
     if coa is None:
@@ -152,7 +154,7 @@ app.include_router(contract_router)
 
 
 @app.get("/health", tags=["Health"])
-async def health() -> Dict[str, str]:
+async def health() -> dict[str, str]:
     """Liveness/readiness probe served by the container healthcheck."""
     return {"status": "ok", "service": "mule-coa-api"}
 

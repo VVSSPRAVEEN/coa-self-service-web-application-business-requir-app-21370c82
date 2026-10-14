@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
-from typing import Optional
 
 from pydantic import BaseModel, Field
 
@@ -18,7 +17,7 @@ class SisterPlantPrintRequest(BaseModel):
     requesting_plant_id: str
     target_plant_id: str
     user_id: str
-    reason: Optional[str] = None
+    reason: str | None = None
 
 
 class SisterPlantPrintValidationResult(BaseModel):
@@ -37,5 +36,5 @@ class CrossPlantPrintAuditEntry(BaseModel):
     target_plant_id: str
     user_id: str
     validation_status: PrintValidationStatus
-    reason: Optional[str] = None
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    reason: str | None = None
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))

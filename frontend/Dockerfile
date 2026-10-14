@@ -34,4 +34,5 @@ RUN npm run build
 
 EXPOSE 5173
 
+USER node
 CMD ["npx","vite","preview","--host","0.0.0.0","--port","5173","--strictPort"]

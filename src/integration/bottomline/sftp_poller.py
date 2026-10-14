@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import List, Optional, Protocol
+from typing import Protocol
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +21,7 @@ class SftpFileEntry:
 class SftpClient(Protocol):
     """Protocol for SFTP client operations."""
 
-    def list_files(self, remote_dir: str) -> List[str]: ...
+    def list_files(self, remote_dir: str) -> list[str]: ...
     def read_file(self, remote_path: str) -> bytes: ...
     def delete_file(self, remote_path: str) -> None: ...
 
@@ -43,13 +43,13 @@ class SftpPoller:
         self._remote_dir = remote_dir
         self._file_pattern = file_pattern
 
-    def poll(self) -> List[SftpFileEntry]:
+    def poll(self) -> list[SftpFileEntry]:
         """Poll the SFTP directory for new files.
 
         Returns:
             List of discovered file entries ready for ingestion.
         """
-        entries: List[SftpFileEntry] = []
+        entries: list[SftpFileEntry] = []
         try:
             file_names = self._client.list_files(self._remote_dir)
         except Exception:
@@ -89,7 +89,7 @@ class SftpPoller:
         return True
 
     @staticmethod
-    def _extract_batch_id(file_name: str) -> Optional[str]:
+    def _extract_batch_id(file_name: str) -> str | None:
         """Extract BatchID from Bottomline file naming convention.
 
         Expected format: BATCH_<batchid>_<sequence>.txt

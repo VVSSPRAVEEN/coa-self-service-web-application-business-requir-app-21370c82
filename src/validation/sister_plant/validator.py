@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import List, Optional
-
 from src.validation.sister_plant.models import (
     CrossPlantPrintAuditEntry,
     PrintValidationStatus,
@@ -20,12 +18,10 @@ class SisterPlantValidator:
 
     def __init__(
         self,
-        get_sister_plants_fn: Optional[
-            callable[[str], List[str]]
-        ] = None,
+        get_sister_plants_fn: callable[[str], list[str]] | None = None,
     ) -> None:
         self._get_sister_plants = get_sister_plants_fn or (lambda _: [])
-        self._audit_log: List[CrossPlantPrintAuditEntry] = []
+        self._audit_log: list[CrossPlantPrintAuditEntry] = []
 
     def validate_print_request(
         self, request: SisterPlantPrintRequest
@@ -82,7 +78,7 @@ class SisterPlantValidator:
         )
         self._audit_log.append(entry)
 
-    def get_audit_log(self) -> List[CrossPlantPrintAuditEntry]:
+    def get_audit_log(self) -> list[CrossPlantPrintAuditEntry]:
         return list(self._audit_log)
 
     def clear_audit_log(self) -> None:

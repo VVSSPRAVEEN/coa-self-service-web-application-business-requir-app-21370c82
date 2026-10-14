@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import logging
-from datetime import date, datetime, timezone
-from typing import Any, Callable, Dict, List, Optional, Protocol
+from collections.abc import Callable
+from datetime import UTC, date, datetime
+from typing import Any, Protocol
 
 from src.reports.missing_coa.models import MissingCoaRow, ReportResult
 from src.reports.missing_coa.render import render_csv, render_text
@@ -15,7 +16,7 @@ logger = logging.getLogger(__name__)
 class DiscoveryRepository(Protocol):
     """Protocol for querying discovered COA records."""
 
-    def fetch_missing_coas(self) -> List[Dict[str, Any]]:
+    def fetch_missing_coas(self) -> list[dict[str, Any]]:
         """Return raw discovery records that are missing or incomplete."""
         ...
 
@@ -23,7 +24,7 @@ class DiscoveryRepository(Protocol):
 class ValidationRepository(Protocol):
     """Protocol for querying validation results."""
 
-    def fetch_failed_validations(self) -> List[Dict[str, Any]]:
+    def fetch_failed_validations(self) -> list[dict[str, Any]]:
         """Return raw records that failed validation."""
         ...
 
@@ -33,17 +34,17 @@ class MissingCoaReportService:
 
     def __init__(
         self,
-        discovery_repo: Optional[DiscoveryRepository] = None,
-        validation_repo: Optional[ValidationRepository] = None,
-        clock: Optional[Callable[[], date]] = None,
+        discovery_repo: DiscoveryRepository | None = None,
+        validation_repo: ValidationRepository | None = None,
+        clock: Callable[[], date] | None = None,
     ) -> None:
         self._discovery_repo = discovery_repo
         self._validation_repo = validation_repo
-        self._clock = clock or (lambda: datetime.now(timezone.utc).date())
+        self._clock = clock or (lambda: datetime.now(UTC).date())
 
     def generate_report(
         self,
-        raw_records: Optional[List[Dict[str, Any]]] = None,
+        raw_records: list[dict[str, Any]] | None = None,
         report_window: str = "daily",
     ) -> ReportResult:
         """Build the missing COA report from repository data or injected records.
@@ -58,7 +59,7 @@ class MissingCoaReportService:
         today = self._clock()
         records = raw_records if raw_records is not None else self._fetch_all_records()
 
-        rows: List[MissingCoaRow] = []
+        rows: list[MissingCoaRow] = []
         for record in records:
             row = self._build_row(record, today)
             if row is not None:
@@ -68,7 +69,7 @@ class MissingCoaReportService:
         sorted_rows = sorted(rows, key=lambda r: (-r.age_days, r.coa_id))
         frozen_rows = tuple(sorted_rows)
 
-        now_str = datetime.now(timezone.utc).isoformat()
+        now_str = datetime.now(UTC).isoformat()
         text_body = render_text(frozen_rows)
         csv_body = render_csv(frozen_rows)
 
@@ -89,9 +90,9 @@ class MissingCoaReportService:
             report_window=report_window,
         )
 
-    def _fetch_all_records(self) -> List[Dict[str, Any]]:
+    def _fetch_all_records(self) -> list[dict[str, Any]]:
         """Fetch records from both discovery and validation repositories."""
-        records: List[Dict[str, Any]] = []
+        records: list[dict[str, Any]] = []
         if self._discovery_repo is not None:
             try:
                 records.extend(self._discovery_repo.fetch_missing_coas())
@@ -104,7 +105,7 @@ class MissingCoaReportService:
                 logger.exception("Failed to fetch failed validations from validation repo")
         return records
 
-    def _build_row(self, record: Dict[str, Any], today: date) -> Optional[MissingCoaRow]:
+    def _build_row(self, record: dict[str, Any], today: date) -> MissingCoaRow | None:
         """Convert a raw record dict into a MissingCoaRow if it qualifies."""
         coa_id = str(record.get("coa_id", ""))
         if not coa_id:
@@ -117,7 +118,7 @@ class MissingCoaReportService:
         priority = str(priority_raw) if priority_raw is not None else None
         ship_date_raw = record.get("required_ship_date")
 
-        required_ship_date: Optional[date] = None
+        required_ship_date: date | None = None
         if isinstance(ship_date_raw, date):
             required_ship_date = ship_date_raw
         elif isinstance(ship_date_raw, str) and ship_date_raw:
@@ -129,8 +130,7 @@ class MissingCoaReportService:
         age_days = 0
         if required_ship_date is not None:
             age_days = (today - required_ship_date).days
-            if age_days < 0:
-                age_days = 0
+            age_days = max(age_days, 0)
 
         blocking_reason = self._determine_blocking_reason(
             record, required_ship_date, priority, age_days
@@ -152,13 +152,13 @@ class MissingCoaReportService:
 
     @staticmethod
     def _determine_blocking_reason(
-        record: Dict[str, Any],
-        required_ship_date: Optional[date],
-        priority: Optional[str],
+        record: dict[str, Any],
+        required_ship_date: date | None,
+        priority: str | None,
         age_days: int,
     ) -> str:
         """Determine why this COA is blocking."""
-        reasons: List[str] = []
+        reasons: list[str] = []
 
         status = str(record.get("status", "")).lower()
         if status in ("missing", "absent", ""):

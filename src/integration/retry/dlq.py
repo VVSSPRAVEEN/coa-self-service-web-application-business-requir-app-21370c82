@@ -6,8 +6,8 @@ import json
 import logging
 import os
 import traceback
-from dataclasses import dataclass, field, asdict
-from datetime import datetime, timezone
+from dataclasses import asdict, dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -42,7 +42,7 @@ class DLQRecord:
     error_type: str
     error_message: str
     stack_trace: str
-    timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    timestamp: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
     source: str = "ingestion"
 
     def to_dict(self) -> dict[str, Any]:
@@ -63,7 +63,7 @@ class DLQRecord:
             error_type=data["error_type"],
             error_message=data["error_message"],
             stack_trace=data["stack_trace"],
-            timestamp=data.get("timestamp", datetime.now(timezone.utc).isoformat()),
+            timestamp=data.get("timestamp", datetime.now(UTC).isoformat()),
             source=data.get("source", "ingestion"),
         )
 
@@ -240,7 +240,7 @@ class DeadLetterQueue:
             {
                 "record_id": record_id,
                 "redriven": True,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "timestamp": datetime.now(UTC).isoformat(),
             }
         )
         try:

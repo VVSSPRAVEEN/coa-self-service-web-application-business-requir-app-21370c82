@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Callable
 from functools import wraps
-from typing import Any, Callable, TypeVar, overload
+from typing import Any, TypeVar, overload
 
-from src.integration.retry.policy import RetryPolicy, DEFAULT_RETRY_POLICY
-from src.integration.retry.errors import classify_error
 from src.integration.retry.dlq import DeadLetterQueue
+from src.integration.retry.errors import classify_error
+from src.integration.retry.policy import DEFAULT_RETRY_POLICY, RetryPolicy
 
 logger = logging.getLogger(__name__)
 
@@ -73,7 +74,7 @@ def retry_call(
             if record_id_fn is not None:
                 try:
                     rec_id = record_id_fn(*args, **kwargs)
-                except Exception:
+                except Exception:  # noqa: BLE001 - id derivation is best effort
                     rec_id = f"{fn.__name__}_{id(args)}_{time.time()}"
             else:
                 rec_id = f"{fn.__name__}_{hash(str(args) + str(sorted(kwargs.items())))}"

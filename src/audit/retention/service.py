@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import json
 import logging
-
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any
 
 from src.audit.retention.hold import LegalHoldManager
 from src.audit.retention.policy import RetentionConfig, RetentionPolicy
@@ -23,8 +23,8 @@ class PurgeResult:
     purged_count: int
     skipped_held_count: int
     skipped_not_expired_count: int
-    purged_resource_ids: List[str] = field(default_factory=list)
-    errors: List[str] = field(default_factory=list)
+    purged_resource_ids: list[str] = field(default_factory=list)
+    errors: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -33,13 +33,13 @@ class ExportResult:
 
     exported_count: int
     output_path: str
-    errors: List[str] = field(default_factory=list)
+    errors: list[str] = field(default_factory=list)
 
 
 # Type alias for the actual deletion callback used during purge
 PurgeCallback = Callable[[str], bool]
 # Type alias for fetching records to evaluate
-RecordFetcher = Callable[[], List[Dict[str, Any]]]
+RecordFetcher = Callable[[], list[dict[str, Any]]]
 
 
 class RetentionService:
@@ -52,9 +52,9 @@ class RetentionService:
 
     def __init__(
         self,
-        policy: Optional[RetentionPolicy] = None,
-        hold_manager: Optional[LegalHoldManager] = None,
-        config: Optional[RetentionConfig] = None,
+        policy: RetentionPolicy | None = None,
+        hold_manager: LegalHoldManager | None = None,
+        config: RetentionConfig | None = None,
     ) -> None:
         cfg = config or RetentionConfig()
         self._policy = policy or RetentionPolicy(cfg)
@@ -73,13 +73,13 @@ class RetentionService:
         self,
         resource_id: str,
         created_at: datetime,
-        reference_time: Optional[datetime] = None,
-    ) -> Dict[str, Any]:
+        reference_time: datetime | None = None,
+    ) -> dict[str, Any]:
         """Evaluate a single record's retention status.
 
         Returns a dict with expiry info, hold status, and eligibility.
         """
-        ref = reference_time or datetime.now(timezone.utc)
+        ref = reference_time or datetime.now(UTC)
         is_expired = self._policy.is_expired(created_at, ref)
         is_held = self._hold_manager.is_on_hold(resource_id)
         remaining = self._policy.remaining_days(created_at, ref)
@@ -97,9 +97,9 @@ class RetentionService:
 
     def export_expired_records(
         self,
-        records: List[Dict[str, Any]],
+        records: list[dict[str, Any]],
         output_directory: str,
-        reference_time: Optional[datetime] = None,
+        reference_time: datetime | None = None,
     ) -> ExportResult:
         """Export records that have exceeded their retention window.
 
@@ -114,7 +114,7 @@ class RetentionService:
         Returns:
             ExportResult with count and output path.
         """
-        ref = reference_time or datetime.now(timezone.utc)
+        ref = reference_time or datetime.now(UTC)
         safe_dir = Path(output_directory)
         safe_dir.mkdir(parents=True, exist_ok=True)
 
@@ -124,8 +124,8 @@ class RetentionService:
         safe_filename = Path(filename).name
         output_path = safe_dir / safe_filename
 
-        exportable: List[Dict[str, Any]] = []
-        errors: List[str] = []
+        exportable: list[dict[str, Any]] = []
+        errors: list[str] = []
 
         for record in records:
             resource_id = str(record.get("resource_id", ""))
@@ -172,10 +172,10 @@ class RetentionService:
 
     def purge_expired_records(
         self,
-        records: List[Dict[str, Any]],
+        records: list[dict[str, Any]],
         purge_callback: PurgeCallback,
         require_export_first: bool = True,
-        reference_time: Optional[datetime] = None,
+        reference_time: datetime | None = None,
     ) -> PurgeResult:
         """Purge records that have exceeded their 5-year retention window.
 
@@ -193,7 +193,7 @@ class RetentionService:
         Returns:
             PurgeResult with counts and any errors.
         """
-        ref = reference_time or datetime.now(timezone.utc)
+        ref = reference_time or datetime.now(UTC)
         result = PurgeResult(
             purged_count=0,
             skipped_held_count=0,
@@ -253,7 +253,7 @@ class RetentionService:
                     logger.info("Purged expired record: %s", resource_id)
                 else:
                     result.errors.append(f"Purge callback returned False for {resource_id}")
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 - one record's purge failure must not abort the sweep
                 error_msg = f"Purge failed for {resource_id}: {exc}"
                 result.errors.append(error_msg)
                 logger.error(error_msg)
@@ -286,7 +286,7 @@ class RetentionService:
         self,
         resource_id: str,
         released_by: str,
-        reason: Optional[str] = None,
+        reason: str | None = None,
     ) -> int:
         """Release legal holds on a resource."""
         count = self._hold_manager.release_hold(
@@ -304,12 +304,12 @@ class RetentionService:
 
     def get_retention_status_report(
         self,
-        records: List[Dict[str, Any]],
-        reference_time: Optional[datetime] = None,
-    ) -> List[Dict[str, Any]]:
+        records: list[dict[str, Any]],
+        reference_time: datetime | None = None,
+    ) -> list[dict[str, Any]]:
         """Generate a retention status report for a set of records."""
-        ref = reference_time or datetime.now(timezone.utc)
-        report: List[Dict[str, Any]] = []
+        ref = reference_time or datetime.now(UTC)
+        report: list[dict[str, Any]] = []
 
         for record in records:
             resource_id = str(record.get("resource_id", ""))

@@ -7,7 +7,6 @@ import logging
 import sys
 import time
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Set
 
 from src.notifications.email.transport import MailTransport
 
@@ -39,7 +38,7 @@ class IdempotencyStore:
     """In-memory store for tracking dispatched idempotency keys."""
 
     def __init__(self) -> None:
-        self._seen: Set[str] = set()
+        self._seen: set[str] = set()
 
     def has_been_sent(self, key: str) -> bool:
         """Check if this key was already dispatched."""
@@ -61,7 +60,7 @@ class EmailDispatcher:
         self,
         transport: MailTransport,
         settings: DispatcherSettings,
-        idempotency_store: Optional[IdempotencyStore] = None,
+        idempotency_store: IdempotencyStore | None = None,
     ) -> None:
         self._transport = transport
         self._settings = settings
@@ -107,7 +106,7 @@ class EmailDispatcher:
         raw = f"{report_window}:{recipient}:{self._settings.sender_address}"
         return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
-    def resolve_recipients(self, distribution_lists: Optional[List[str]] = None) -> List[str]:
+    def resolve_recipients(self, distribution_lists: list[str] | None = None) -> list[str]:
         """Resolve unique recipients from CS and QA distribution lists.
 
         Args:
@@ -116,7 +115,7 @@ class EmailDispatcher:
         Returns:
             Deduplicated list of email addresses.
         """
-        recipients: Set[str] = set()
+        recipients: set[str] = set()
         include_cs = distribution_lists is None or "cs" in distribution_lists
         include_qa = distribution_lists is None or "qa" in distribution_lists
 
@@ -133,9 +132,9 @@ class EmailDispatcher:
         subject: str,
         body_text: str,
         csv_content: str,
-        distribution_lists: Optional[List[str]] = None,
+        distribution_lists: list[str] | None = None,
         channel: str = "email",
-        body_html: Optional[str] = None,
+        body_html: str | None = None,
     ) -> bool:
         """Dispatch the report email to all resolved recipients.
 
@@ -172,7 +171,7 @@ class EmailDispatcher:
         ]
 
         all_succeeded = True
-        results: Dict[str, str] = {}
+        results: dict[str, str] = {}
 
         for recipient in recipients:
             idem_key = self.generate_idempotency_key(report_window, recipient)
@@ -236,7 +235,7 @@ class EmailDispatcher:
         recipient: str,
         subject: str,
         body_text: str,
-        body_html: Optional[str],
+        body_html: str | None,
         attachments: list[dict[str, bytes | str]],
         idem_key: str,
     ) -> bool:
@@ -254,7 +253,7 @@ class EmailDispatcher:
             True if eventually successful, False after exhausting retries.
         """
         delay = self._settings.retry_base_delay
-        last_error: Optional[str] = None
+        last_error: str | None = None
 
         for attempt in range(1, self._settings.max_retries + 1):
             logger.info(
@@ -311,9 +310,9 @@ class EmailDispatcher:
         subject: str,
         body_text: str,
         csv_content: str,
-        distribution_lists: Optional[List[str]] = None,
+        distribution_lists: list[str] | None = None,
         channel: str = "email",
-        body_html: Optional[str] = None,
+        body_html: str | None = None,
     ) -> None:
         """Dispatch and exit with non-zero code if any recipient permanently fails.
 

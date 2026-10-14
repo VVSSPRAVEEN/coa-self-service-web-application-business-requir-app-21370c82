@@ -37,4 +37,8 @@ COPY conftest.py ./conftest.py
 COPY pytest.ini ./pytest.ini
 COPY pyproject.toml ./
 
+RUN useradd --create-home --uid 10001 appuser \
+ && mkdir -p /workspace/inbound \
+ && chown -R appuser:appuser /workspace
+USER appuser
 CMD ["python", "-m", "src.workers.scheduler"]

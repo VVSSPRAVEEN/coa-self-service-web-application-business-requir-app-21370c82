@@ -11,12 +11,14 @@ from __future__ import annotations
 import base64
 import hashlib
 import secrets
+from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
-from typing import Any, Callable, Optional
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 try:
-    import botocore  # noqa: F401 - bound so the availability guard below works in
+    import botocore
+
     # environments where the import SUCCEEDS; previously only the failure path bound
     # the name, so `if botocore is None` raised NameError wherever boto3 is installed.
     from botocore.auth import SigV4QueryAuth
@@ -56,7 +58,7 @@ class PresignedUrlConfig:
     """
 
     region: str = "us-east-1"
-    endpoint_url: Optional[str] = None
+    endpoint_url: str | None = None
     bucket: str = "coa-documents"
     expiry_seconds: int = DEFAULT_EXPIRY_SECONDS
     max_expiry_seconds: int = MAX_EXPIRY_SECONDS
@@ -130,12 +132,12 @@ class PresignedUrlService:
 
     def __init__(
         self,
-        config: Optional[PresignedUrlConfig] = None,
+        config: PresignedUrlConfig | None = None,
         *,
-        credentials: Optional[Credentials] = None,
-        signer: Optional[Callable[[str, str], str]] = None,
+        credentials: Credentials | None = None,
+        signer: Callable[[str, str], str] | None = None,
         validate_before_sign: bool = True,
-        validator: Optional[Callable[[str, str, str], bool]] = None,
+        validator: Callable[[str, str, str], bool] | None = None,
     ):
         self.config = config or PresignedUrlConfig()
         self._credentials = credentials
@@ -151,9 +153,9 @@ class PresignedUrlService:
         self,
         key: str,
         method: str = "GET",
-        expiry_seconds: Optional[int] = None,
-        user_id: Optional[str] = None,
-        coa_id: Optional[str] = None,
+        expiry_seconds: int | None = None,
+        user_id: str | None = None,
+        coa_id: str | None = None,
     ) -> PresignedUrlResult:
         """Generate a presigned URL for a COA PDF.
 
@@ -180,15 +182,14 @@ class PresignedUrlService:
         # FR6: the completion gate is evaluated before signing, and only when a COA
         # context exists. A request with no `coa_id` carries nothing to gate, so it is
         # not sent through the validator at all (test_fr6_gate_ignores_request_without_coa_context).
-        if self._validate_before_sign and self._validator is not None and coa_id:
-            if not self._validator(coa_id, key, user_id or ""):
-                raise PresignedUrlScopeError(
-                    "completion gate rejected the request for COA "
-                    f"{coa_id}: required JDE test fields are missing"
-                )
+        if self._validate_before_sign and self._validator is not None and coa_id and not self._validator(coa_id, key, user_id or ""):
+            raise PresignedUrlScopeError(
+                "completion gate rejected the request for COA "
+                f"{coa_id}: required JDE test fields are missing"
+            )
 
         expires_at = (
-            datetime.now(timezone.utc).replace(microsecond=0)
+            datetime.now(UTC).replace(microsecond=0)
             + timedelta(seconds=effective_expiry)
         )
         request_id = self._request_id()
@@ -218,7 +219,7 @@ class PresignedUrlService:
             expiry_ts = float(expires[0])
         except ValueError:
             return True
-        return datetime.now(timezone.utc).timestamp() > expiry_ts
+        return datetime.now(UTC).timestamp() > expiry_ts
 
     def _normalize_key(self, key: str) -> str:
         # The scope prefix is REQUIRED, never supplied: an out-of-scope key is rejected
@@ -229,7 +230,7 @@ class PresignedUrlService:
         self,
         key: str,
         method: str,
-        expiry_seconds: Optional[int],
+        expiry_seconds: int | None,
     ) -> None:
         allowed_methods = {"GET"}
         if method.upper() not in allowed_methods:
@@ -269,7 +270,7 @@ class PresignedUrlService:
     @classmethod
     def from_env(
         cls,
-        validator: Optional[Callable[[str, str, str], bool]] = None,
+        validator: Callable[[str, str, str], bool] | None = None,
     ) -> PresignedUrlService:
         """Construct the service from environment configuration.
 

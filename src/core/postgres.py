@@ -37,8 +37,9 @@ this backend layer emits is plain SQL against the tables declared in
 from __future__ import annotations
 
 import os
+from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
-from typing import Any, Iterator, Mapping, Optional
+from typing import Any
 
 __all__ = [
     "BACKEND_AUTO",
@@ -84,7 +85,7 @@ class PostgresDriverUnavailableError(RuntimeError):
     """``psycopg2`` is configured as the driver but is not importable."""
 
 
-def _env(name: str, env: Optional[Mapping[str, str]] = None) -> Optional[str]:
+def _env(name: str, env: Mapping[str, str] | None = None) -> str | None:
     """Read ``name`` from ``env`` (default :data:`os.environ`), trimmed."""
     source: Mapping[str, str] = os.environ if env is None else env
     raw = source.get(name)
@@ -94,7 +95,7 @@ def _env(name: str, env: Optional[Mapping[str, str]] = None) -> Optional[str]:
     return text or None
 
 
-def resolve_dsn(env: Optional[Mapping[str, str]] = None) -> Optional[str]:
+def resolve_dsn(env: Mapping[str, str] | None = None) -> str | None:
     """Return the configured audit-database DSN, or ``None`` when unset.
 
     Args:
@@ -110,7 +111,7 @@ def resolve_dsn(env: Optional[Mapping[str, str]] = None) -> Optional[str]:
     return None
 
 
-def resolve_backend(env: Optional[Mapping[str, str]] = None) -> str:
+def resolve_backend(env: Mapping[str, str] | None = None) -> str:
     """Return the persistence backend this process should use.
 
     Args:
@@ -180,7 +181,7 @@ def connection(dsn_or_conn: Any) -> Iterator[Any]:
     except BaseException:
         try:
             conn.rollback()
-        except Exception:  # pragma: no cover - rollback is best effort
+        except Exception:  # noqa: BLE001  # pragma: no cover - rollback is best effort
             __import__("logging").getLogger(__name__).warning("rollback failed during cleanup", exc_info=True)
         raise
     finally:
