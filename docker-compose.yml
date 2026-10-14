@@ -318,6 +318,11 @@ services:
       # asserts the in-memory/JSON fallback, so it pins that fallback explicitly
       # instead of inheriting the api service's DSN and reaching for a database.
       P3_PERSISTENCE_BACKEND: memory
+      BOTTOMLINE_INBOUND_DIR: /tmp/inbound/bottomline
+      BOTTOMLINE_PROCESSED_DIR: /tmp/inbound/processed
+      BOTTOMLINE_QUARANTINE_DIR: /tmp/inbound/quarantine
+      ALERT_QUEUE_DIR: /tmp/inbound/alerts
+      DLQ_STORAGE_PATH: /tmp/inbound/dlq_store
       S3_ENDPOINT_URL: http://s3-mock:4566
       S3_REGION: us-east-1
       S3_BUCKET: coa-documents
