@@ -1,0 +1,2 @@
+[console_scripts]
+audit-trail-admin = src.audit.trail.cli:main

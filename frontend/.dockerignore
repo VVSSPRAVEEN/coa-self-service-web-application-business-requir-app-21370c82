@@ -1,0 +1,6 @@
+# Keep the host's install tree and build output out of the image context: the
+# image installs its own dependencies and compiles its own dist.
+node_modules
+dist
+.vite
+*.log

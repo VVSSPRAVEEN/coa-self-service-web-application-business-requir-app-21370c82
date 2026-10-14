@@ -1,0 +1,10 @@
+{
+  "count": 0,
+  "findings": [],
+  "semgrep": [],
+  "ruff": [],
+  "candidate": {
+    "tree_sha256": "e34f29d4ab334f9edb93cd3a826e5a5fc45bb25cfe38aeb20896562b3ee4f47c",
+    "file_count": 145
+  }
+}

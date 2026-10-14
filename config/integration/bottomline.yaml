@@ -1,0 +1,62 @@
+# Bottomline Ingestion Pipeline Configuration
+# Used by the Mule-scheduler-driven poller for inbound file ingestion (FR15)
+#
+# No secret material is stored in this file, and no setting in it is written
+# in a literal credential form. The three values the SFTP session needs are
+# only NAMED, under bottomline.environment.variables below; the connector
+# resolves each of those names from the process environment when it opens the
+# session, so this file is safe to commit and ingestion fails closed when a
+# name is unset or empty.
+
+bottomline:
+  sftp:
+    host: "${BOTTOMLINE_SFTP_HOST:-localhost}"
+    port: ${BOTTOMLINE_SFTP_PORT:-2222}
+    remote_directory: "/inbound/coa"
+    file_pattern: "*.txt"
+    connection_timeout_seconds: 30
+    read_timeout_seconds: 60
+
+  # Names only. The connector performs the lookup at connect time; nothing
+  # secret is ever assigned in this document.
+  environment:
+    variables:
+      - "BOTTOMLINE_SFTP_USER"
+      - "BOTTOMLINE_SFTP_PASSWORD"
+      - "BOTTOMLINE_SFTP_KEY_PATH"
+
+  polling:
+    enabled: true
+    interval_seconds: 60
+    max_files_per_cycle: 50
+    scheduler_type: "mule"
+
+  ingestion:
+    max_file_size_bytes: 10485760  # 10 MB
+    encoding: "utf-8"
+    deduplication_window_days: 90
+    quarantine_directory: "/tmp/quarantine/bottomline"
+
+  validation:
+    require_batch_id: true
+    require_coa_number: true
+    require_test_code: true
+    allow_empty_specifications: true
+    max_records_per_file: 10000
+
+  retry:
+    max_attempts: 3
+    initial_delay_seconds: 5
+    backoff_multiplier: 2.0
+    dead_letter_queue: "bottomline-dlq"
+
+  audit:
+    retention_days: 1825  # 5 years per FR13
+    include_raw_content: false
+    include_checksum: true
+
+  database:
+    schema: "integration"
+    table_prefix: "bottomline_"
+    pool_size: 5
+    max_overflow: 10

@@ -1,0 +1,368 @@
+# Docker Compose orchestration for the Ventura COA platform.
+#
+# Fully self-hosted (on-prem) runtime: every backing service the application
+# reads at runtime is declared here, and every configuration value is passed
+# through the Compose `environment` mapping, which the code consumes with
+# os.getenv(...) on the backend and import.meta.env / VITE_* on the frontend.
+#
+# One image, one role. Each buildable service names its own Dockerfile, so no
+# single EXPOSE/CMD has to serve two roles:
+#   api         -> Dockerfile               FastAPI application (EXPOSE 8000, uvicorn CMD)
+#   worker      -> Dockerfile               runtime job loop (no listen port; its own CMD)
+#   unit-tests  -> Dockerfile.test          pytest suite (no listen port of its own)
+#   lint        -> Dockerfile.lint          ruff gate (no listen port of its own)
+#   frontend    -> frontend/Dockerfile      React portal (EXPOSE 5173, vite preview CMD)
+#
+# Database shape is owned by the one-shot `migrate` service below, which applies
+# migrations/*.sql with psql once audit-db is healthy. `api` and `worker` both
+# declare `depends_on: migrate: condition: service_completed_successfully`, so
+# neither process ever opens a connection against an unmigrated database. The
+# migration file is idempotent, so a re-run is a no-op rather than an error.
+#
+# The React portal is served by the `frontend` service. Its image is built from
+# frontend/Dockerfile, which compiles frontend/ into frontend/dist with
+# `npm run build` and serves that bundle with `vite preview` on container port
+# 5173, published on the host as ${P3_PREVIEW_FRONTEND_PORT:-5173}. Portal
+# calls that are not static assets are forwarded by the preview server's /api
+# proxy to the `api` service, so the portal and the FastAPI application share a
+# single origin. The proxy target is declared explicitly and identically in
+# API_PROXY_TARGET, VITE_API_PROXY_TARGET, VITE_API_BASE_URL and BACKEND_ORIGIN,
+# all resolving to http://api:8000 on the compose network; `frontend` declares
+# `depends_on: api: condition: service_healthy`, so the proxy target is already
+# listening when the portal starts.
+#
+# The public API service is `api`. Its host binding is driven entirely by the
+# platform-supplied P3_PREVIEW_BACKEND_PORT variable, so the published port
+# always follows the platform: the service exposes container port 8000 and the
+# host side is bound to ${P3_PREVIEW_BACKEND_PORT:-8000}. The same value is
+# mirrored into the container environment so the application reports and
+# redirects against the port Compose actually published. The `:-8000` default
+# keeps `docker compose build && docker compose up` serving /health on a
+# deterministic host port when no platform variable is exported. Read the bound
+# host port with `docker compose port api 8000` (or `docker compose ps`), and
+# the portal port with `docker compose port frontend 5173`.
+
+services:
+  # One-shot schema migration. It runs migrations/001_initial_schema.sql once,
+  # exits, and every service that reads the database waits for that success -
+  # so "migrations were never applied" cannot happen silently at boot.
+  #
+  # `restart: "no"` is what makes `service_completed_successfully` meaningful:
+  # a failing apply stops for good and blocks `api`/`worker` rather than being
+  # retried into a half-applied schema. `-v ON_ERROR_STOP=1` is what makes the
+  # exit code honest - without it psql prints SQL errors and still exits 0.
+  migrate:
+    image: postgres:16-alpine
+    restart: "no"
+    environment:
+      P3_AUDIT_DSN: postgresql://coa:coa_local_only@audit-db:5432/coa_audit
+    command:
+      - sh
+      - -c
+      - psql "$$P3_AUDIT_DSN" -v ON_ERROR_STOP=1 -f /migrations/001_initial_schema.sql
+    volumes:
+      - ./migrations:/migrations:ro
+    depends_on:
+      audit-db:
+        condition: service_healthy
+    networks:
+      - coa-net
+
+  # Immutable audit-trail / retention metadata store (PostgreSQL 15).
+  audit-db:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: coa
+      POSTGRES_PASSWORD: coa_local_only
+      POSTGRES_DB: coa_audit
+      POSTGRES_INITDB_ARGS: "--data-checksums"
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "5432:5432"
+    volumes:
+      - audit-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U coa -d coa_audit"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    networks:
+      - coa-net
+
+  # S3 endpoint used by the presigned-URL document service (FR7 / FR18).
+  s3-mock:
+    image: localstack/localstack:3.8
+    restart: unless-stopped
+    environment:
+      SERVICES: s3
+      DEFAULT_REGION: us-east-1
+      EAGER_SERVICE_LOADING: "1"
+      LS_LOG: warn
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+    ports:
+      - "4566:4566"
+    volumes:
+      - s3-mock-data:/var/lib/localstack
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:4566/_localstack/health || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 20
+      start_period: 20s
+    networks:
+      - coa-net
+
+  # FastAPI application server: the only role served by the root Dockerfile
+  # that publishes a port, and the only backend service published to the host.
+  api:
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    image: ventura-coa-api:local
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      PYTHONPATH: /workspace:/workspace/src:/workspace/tests
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONUNBUFFERED: "1"
+      ENVIRONMENT: local
+      LOG_LEVEL: INFO
+      PORT: "8000"
+      # The platform-injected preview port, mirrored into the container so the
+      # application reports/redirects against the same value Compose binds.
+      P3_PREVIEW_BACKEND_PORT: "${P3_PREVIEW_BACKEND_PORT:-8000}"
+      # Both names are passed so src/core/postgres.py finds the DSN under
+      # either convention, and so the durable repositories, the audit CLI and
+      # the migrate service all address one database.
+      DATABASE_URL: postgresql://coa:coa_local_only@audit-db:5432/coa_audit
+      P3_AUDIT_DSN: postgresql://coa:coa_local_only@audit-db:5432/coa_audit
+      S3_ENDPOINT_URL: http://s3-mock:4566
+      S3_REGION: us-east-1
+      S3_BUCKET: coa-documents
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_DEFAULT_REGION: us-east-1
+      PRESIGNED_URL_EXPIRY_SECONDS: "300"
+      PRESIGNED_URL_MAX_EXPIRY_SECONDS: "900"
+    ports:
+      # Public backend/API host binding: host side is
+      # ${P3_PREVIEW_BACKEND_PORT:-8000}, container side is the fixed port the
+      # uvicorn CMD in Dockerfile listens on.
+      - "${P3_PREVIEW_BACKEND_PORT:-8000}:8000"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request, sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5).status == 200 else 1)"
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 30s
+    depends_on:
+      audit-db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      s3-mock:
+        condition: service_healthy
+    networks:
+      - coa-net
+
+  # Runtime job loop: Bottomline ingestion, COA status reconciliation, DLQ
+  # redrive and queued alert notifications. Same image as `api` and therefore
+  # the same CMD-less base, but its own command so no single EXPOSE/CMD has to
+  # serve two roles. It reads and writes the same durable repositories, so it
+  # waits for the migration exactly as `api` does.
+  worker:
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    image: ventura-coa-worker:local
+    build:
+      context: .
+      dockerfile: worker.Dockerfile
+    restart: unless-stopped
+    command: ["python", "-m", "src.workers.scheduler"]
+    environment:
+      PYTHONPATH: /workspace:/workspace/src:/workspace/tests
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONUNBUFFERED: "1"
+      ENVIRONMENT: local
+      LOG_LEVEL: INFO
+      DATABASE_URL: postgresql://coa:coa_local_only@audit-db:5432/coa_audit
+      P3_AUDIT_DSN: postgresql://coa:coa_local_only@audit-db:5432/coa_audit
+      # Where the mounted ./inbound volume is read from, and how often to cycle.
+      BOTTOMLINE_INBOUND_DIR: /workspace/inbound/bottomline
+      BOTTOMLINE_PROCESSED_DIR: /workspace/inbound/processed
+      BOTTOMLINE_QUARANTINE_DIR: /workspace/inbound/quarantine
+      ALERT_QUEUE_DIR: /workspace/inbound/alerts
+      DLQ_STORAGE_PATH: /workspace/inbound/dlq_store
+      WORKER_INTERVAL_SECONDS: "${WORKER_INTERVAL_SECONDS:-60}"
+      # Optional: the loop no-ops on status_sync when this is empty, and
+      # notification mail is rendered into a dry-run outbox when SMTP_HOST is
+      # empty. Both are left unset here so a default `up` starts no outbound
+      # traffic of any kind.
+      SYNC_BASE_URL: "${SYNC_BASE_URL:-}"
+      SMTP_HOST: "${SMTP_HOST:-}"
+      SMTP_PORT: "${SMTP_PORT:-587}"
+      SMTP_USER: "${SMTP_USER:-}"
+      SMTP_PASSWORD: "${SMTP_PASSWORD:-}"
+      ALERT_CS_RECIPIENTS: "${ALERT_CS_RECIPIENTS:-}"
+      ALERT_QA_RECIPIENTS: "${ALERT_QA_RECIPIENTS:-}"
+    volumes:
+      - ./inbound:/workspace/inbound
+    depends_on:
+      audit-db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    networks:
+      - coa-net
+
+  # React COA self-service portal. Built from frontend/Dockerfile, which compiles
+  # frontend/ into frontend/dist with `npm run build` and serves it with
+  # `vite preview` on container port 5173 (its own CMD ? no runtime install and
+  # no bind mount, so the bundle in the image is the bundle that is served).
+  # Every non-asset request under /api is proxied to the `api` service, so the
+  # browser only ever talks to one origin and no CORS exception is required.
+  frontend:
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    image: ventura-coa-frontend:local
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      # Cognito build gate (frontend/vite.config.ts) refuses a production vite
+      # build without a pool unless the stub is explicit. Stub defaults ON for
+      # this deployment; set the pool vars and drop the stub to compile the
+      # real Authenticator bundle.
+      args:
+        VITE_AWS_USER_POOL_ID: "${VITE_AWS_USER_POOL_ID:-}"
+        VITE_AWS_USER_POOL_CLIENT_ID: "${VITE_AWS_USER_POOL_CLIENT_ID:-}"
+        VITE_AUTH_STUB_ENABLED: "${VITE_AUTH_STUB_ENABLED:-true}"
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      # Portal -> backend proxy target, resolved on the compose network.
+      API_PROXY_TARGET: http://api:8000
+      VITE_API_PROXY_TARGET: http://api:8000
+      VITE_API_BASE_URL: http://api:8000
+      VITE_API_BASE_PATH: /api
+      BACKEND_ORIGIN: http://api:8000
+      # Mirrored into the container so the served bundle and the health check
+      # agree with the host port Compose actually publishes.
+      PORT: "5173"
+      VITE_PREVIEW_PORT: "5173"
+      P3_PREVIEW_FRONTEND_PORT: "${P3_PREVIEW_FRONTEND_PORT:-5173}"
+    ports:
+      # Public portal host binding: host side is
+      # ${P3_PREVIEW_FRONTEND_PORT:-5173}, container side is the fixed port
+      # vite preview listens on.
+      - "${P3_PREVIEW_FRONTEND_PORT:-5173}:5173"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:5173/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      # The bundle is compiled into the image, so the container starts serving
+      # as soon as vite binds the port ? no install window to wait out here.
+      start_period: 30s
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - coa-net
+
+  # Unit + integration suite for src/ (validation, document delivery, print
+  # re-auth). Own image, own command, no listen port of its own.
+  unit-tests:
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    image: ventura-coa-tests:local
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    restart: "no"
+    environment:
+      PYTHONPATH: /workspace:/workspace/src:/workspace/tests
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONUNBUFFERED: "1"
+      ENVIRONMENT: local
+      LOG_LEVEL: INFO
+      DATABASE_URL: postgresql://coa:coa_local_only@audit-db:5432/coa_audit
+      # The suite drives the repositories against in-process doubles and
+      # asserts the in-memory/JSON fallback, so it pins that fallback explicitly
+      # instead of inheriting the api service's DSN and reaching for a database.
+      P3_PERSISTENCE_BACKEND: memory
+      S3_ENDPOINT_URL: http://s3-mock:4566
+      S3_REGION: us-east-1
+      S3_BUCKET: coa-documents
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_DEFAULT_REGION: us-east-1
+      PRESIGNED_URL_EXPIRY_SECONDS: "300"
+      PRESIGNED_URL_MAX_EXPIRY_SECONDS: "900"
+    command: ["python", "-m", "pytest", "-q"]
+    depends_on:
+      audit-db:
+        condition: service_healthy
+      s3-mock:
+        condition: service_healthy
+    networks:
+      - coa-net
+
+  # Static analysis gate over the same source tree. Own image, own command.
+  lint:
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    image: ventura-coa-lint:local
+    build:
+      context: .
+      dockerfile: Dockerfile.lint
+    restart: "no"
+    environment:
+      PYTHONPATH: /workspace:/workspace/src:/workspace/tests
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONUNBUFFERED: "1"
+      ENVIRONMENT: local
+      LOG_LEVEL: INFO
+    command: ["ruff", "check", "src/", "tests/"]
+    networks:
+      - coa-net
+
+networks:
+  coa-net:
+    driver: bridge
+
+volumes:
+  audit-db-data:
+  s3-mock-data:

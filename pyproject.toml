@@ -1,0 +1,67 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ventura-coa"
+version = "1.0.0"
+description = "Ventura COA Platform - Validation, Document, and Notification Services"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.104.0",
+    "uvicorn[standard]>=0.24.0",
+    "pydantic>=2.5.0",
+    "psycopg2-binary>=2.9.9",
+    "boto3>=1.29.0",
+    "httpx>=0.25.0",
+    "python-multipart>=0.0.6",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.21.0",
+    "ruff>=0.1.0",
+    "moto[s3]>=4.2.0",
+]
+
+[project.scripts]
+audit-trail-admin = "src.audit.trail.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*", "tests*"]
+
+# Pytest settings belong under [tool.pytest.ini_options]; the previous
+# ["tests"] table was a plain, non-tool TOML table, so pythonpath,
+# asyncio_mode and addopts were never read by pytest. The repository-root
+# pytest.ini is the anchor pytest resolves as rootdir/inifile for every
+# invocation, and the block below mirrors that file key for key, so both
+# resolutions declare the same import roots, addopts and markers.
+[tool.pytest.ini_options]
+minversion = "7.0"
+testpaths = ["tests"]
+pythonpath = [".", "src", "tests"]
+asyncio_mode = "auto"
+norecursedirs = [
+    ".git",
+    ".p3",
+    "build",
+    "dist",
+    "node_modules",
+    "frontend",
+    "*.egg-info",
+    ".pytest_cache",
+    ".ruff_cache",
+    "__pycache__",
+]
+addopts = "-ra"
+markers = [
+    "integration: tests that require the Compose support services (LocalStack/RDS)",
+    "e2e: Playwright browser journeys",
+    "slow: long running tests",
+]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 120

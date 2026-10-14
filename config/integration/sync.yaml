@@ -1,0 +1,74 @@
+# Near-Real-Time COA Status Synchronization Configuration
+# Manages status sync between JDE, Bottomline, and internal COA headers
+
+sync:
+  service:
+    enabled: true
+    name: "coa-status-sync"
+
+  sources:
+    jde:
+      enabled: true
+      type: "webhook+poll"
+      webhook_path: "/api/v1/sync/webhook/jde"
+      poll_interval_seconds: 120
+      poll_endpoint: "${JDE_STATUS_ENDPOINT:http://localhost:8081/api/status}"
+      api_key: "${JDE_API_KEY:}"
+      timeout_seconds: 30
+
+    bottomline:
+      enabled: true
+      type: "webhook+poll"
+      webhook_path: "/api/v1/sync/webhook/bottomline"
+      poll_interval_seconds: 180
+      poll_endpoint: "${BOTTOMLINE_STATUS_ENDPOINT:http://localhost:8082/api/status}"
+      api_key: "${BOTTOMLINE_API_KEY:}"
+      timeout_seconds: 30
+
+  status_transitions:
+    enforce_monotonic: true
+    terminal_states:
+      - "COMPLETED"
+      - "ARCHIVED"
+      - "REJECTED"
+    allowed_transitions:
+      DRAFT:
+        - "SUBMITTED"
+        - "REJECTED"
+      SUBMITTED:
+        - "UNDER_REVIEW"
+        - "REJECTED"
+      UNDER_REVIEW:
+        - "APPROVED"
+        - "REJECTED"
+      APPROVED:
+        - "COMPLETED"
+      COMPLETED:
+        - "ARCHIVED"
+      REJECTED: []
+      ARCHIVED: []
+
+  idempotency:
+    enabled: true
+    key_retention_hours: 72
+    storage: "database"
+
+  reconciliation:
+    enabled: true
+    interval_seconds: 300
+    max_batch_size: 500
+    resolve_conflicts_by: "highest_sequence_id"
+
+  out_of_order_handling:
+    strategy: "evaluate_but_no_regress"
+    stale_threshold_seconds: 3600
+
+  audit:
+    log_all_transitions: true
+    log_rejected_transitions: true
+    retention_days: 1825
+
+  database:
+    schema: "integration"
+    table_prefix: "sync_"
+    pool_size: 5

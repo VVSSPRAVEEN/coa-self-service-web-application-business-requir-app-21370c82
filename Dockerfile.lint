@@ -1,0 +1,23 @@
+FROM python:3.11-slim
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    NO_CACHE_DIR=1 \
+    PYTHONPATH=/workspace/src:/workspace/tests
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends build-essential curl \
+ && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /workspace
+
+COPY requirements.txt ./
+RUN pip install --upgrade pip \
+ && pip install --no-cache-dir -r requirements.txt \
+ && pip install --no-cache-dir ruff
+
+COPY src/ ./src/
+COPY tests/ ./tests/
+COPY pyproject.toml ./
+
+CMD ["ruff", "check", "src/", "tests/"]

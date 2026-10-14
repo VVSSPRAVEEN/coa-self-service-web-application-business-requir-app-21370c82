@@ -1,0 +1,50 @@
+# Bottomline Ingestion Pipeline Configuration
+# Used by the Mule-scheduler-driven poller for inbound file ingestion
+
+bottomline:
+  sftp:
+    host: "${BOTTOMLINE_SFTP_HOST:localhost}"
+    port: ${BOTTOMLINE_SFTP_PORT:2222}
+    username: "${BOTTOMLINE_SFTP_USER:bottomline_reader}"
+    password: "${BOTTOMLINE_SFTP_PASSWORD:}"
+    private_key_path: "${BOTTOMLINE_SFTP_KEY_PATH:}"
+    remote_directory: "/inbound/coa"
+    file_pattern: "*.txt"
+    connection_timeout_seconds: 30
+    read_timeout_seconds: 60
+
+  polling:
+    enabled: true
+    interval_seconds: 60
+    max_files_per_cycle: 50
+    scheduler_type: "mule"
+
+  ingestion:
+    max_file_size_bytes: 10485760  # 10 MB
+    encoding: "utf-8"
+    deduplication_window_days: 90
+    quarantine_directory: "/tmp/quarantine/bottomline"
+
+  validation:
+    require_batch_id: true
+    require_coa_number: true
+    require_test_code: true
+    allow_empty_specifications: true
+    max_records_per_file: 10000
+
+  retry:
+    max_attempts: 3
+    initial_delay_seconds: 5
+    backoff_multiplier: 2.0
+    dead_letter_queue: "bottomline-dlq"
+
+  audit:
+    retention_days: 1825  # 5 years per FR13
+    include_raw_content: false
+    include_checksum: true
+
+  database:
+    schema: "integration"
+    table_prefix: "bottomline_"
+    pool_size: 5
+    max_overflow: 10

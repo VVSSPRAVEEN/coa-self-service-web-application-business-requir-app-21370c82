@@ -1,0 +1,136 @@
+name: generated-product-ci
+on:
+  push:
+    branches: [main, "p3/**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  checks: read
+
+concurrency:
+  group: generated-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  node-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "20"
+      - name: Install dependencies
+        run: cd 'e2e' && if [ -f package-lock.json ]; then npm ci; else npm install; fi
+      - name: Install Playwright browsers
+        run: cd 'e2e' && if grep -qE '"(playwright|@playwright/test)"' package.json 2>/dev/null; then npx playwright install --with-deps chromium; else echo 'No Playwright dependency; skipping browser install'; fi
+      - name: Build / typecheck
+        run: cd 'e2e' && npm run build --if-present && npm run typecheck --if-present && npm run compile --if-present
+      - name: E2E execution
+        run: echo 'E2E tests are deferred until the Docker integration stack is healthy'
+
+  node-frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "20"
+      - name: Install dependencies
+        run: cd 'frontend' && if [ -f package-lock.json ]; then npm ci; else npm install; fi
+      - name: Install Playwright browsers
+        run: cd 'frontend' && if grep -qE '"(playwright|@playwright/test)"' package.json 2>/dev/null; then npx playwright install --with-deps chromium; else echo 'No Playwright dependency; skipping browser install'; fi
+      - name: Build / typecheck
+        run: cd 'frontend' && npm run build --if-present && npm run typecheck --if-present && npm run compile --if-present
+      - name: Unit / package tests
+        run: cd 'frontend' && npm test --if-present
+
+  python:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip pytest
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          if [ -f pyproject.toml ]; then pip install -e .; fi
+      - name: Compile
+        run: python -m compileall -q .
+      - name: Test
+        run: if find . -maxdepth 4 -type f \( -name 'test_*.py' -o -name '*_test.py' \) | grep -q .; then pytest -q; else echo 'No Python tests discovered'; fi
+
+  security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Semgrep SAST
+        run: |
+          python -m pip install --upgrade pip semgrep
+          semgrep --config auto --error .
+      - name: Trivy filesystem scan
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          severity: CRITICAL,HIGH
+          exit-code: "1"
+          skip-dirs: tests
+
+  container-contract:
+    needs: [node-e2e, node-frontend, python, security]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Validate Compose contract
+        run: docker compose -f docker-compose.yml config
+      - name: Build all services
+        run: docker compose -f docker-compose.yml build
+      - name: Boot integration stack
+        run: docker compose -f docker-compose.yml up -d --wait --wait-timeout 120
+      - name: Integration E2E - e2e
+        run: cd 'e2e' && if [ -f package-lock.json ]; then npm ci; else npm install; fi && if grep -qE '"(playwright|@playwright/test)"' package.json 2>/dev/null; then npx playwright install --with-deps chromium; fi && npm test
+      - name: Verify containers stay running
+        run: |
+          docker compose -f docker-compose.yml ps
+          if [ -n "$(docker compose -f docker-compose.yml ps --status exited -q)" ]; then
+            docker compose -f docker-compose.yml logs --no-color --tail=250
+            exit 1
+          fi
+      - name: Capture integration logs
+        if: always()
+        run: docker compose -f docker-compose.yml logs --no-color --tail=250 > integration-compose.log || true
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: integration-compose-logs
+          path: integration-compose.log
+      - name: Stop integration stack
+        if: always()
+        run: docker compose -f docker-compose.yml down -v --remove-orphans || true
+      - name: Preserve upstream gate failures
+        if: ${{ always() && (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'timed_out')) }}
+        run: |
+          echo "One or more prerequisite CI jobs failed; container evidence was collected but release remains blocked."
+          exit 1
+
+  release-artifact:
+    needs: [container-contract]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: validated-source
+          path: .
+          include-hidden-files: true

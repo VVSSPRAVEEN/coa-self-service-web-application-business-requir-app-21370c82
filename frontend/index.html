@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" href="data:," />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Ventura COA self-service portal: search certificates of analysis, validate completion, download and print."
+    />
+    <title>Ventura COA Self-Service Portal</title>
+  </head>
+  <body>
+    <!--
+      The single SPA entry document for the Ventura COA self-service portal.
+
+      This index.html is the entry document of the ONE Vite project in the
+      repository: frontend/ (package.json + vite.config.ts + tsconfig.json +
+      index.html + src/). There is no second index.html, no second vite config
+      and no package.json outside frontend/, so `vite dev`, `vite build` and
+      `vite preview` all serve this one application. `npm run build` type-checks
+      with `tsc --noEmit` and emits the bundle to frontend/dist, which is what
+      docker-compose's frontend service previews.
+
+      Every non-asset request under /api is proxied by frontend/vite.config.ts
+      to the FastAPI application, so the browser only ever talks to this origin.
+    -->
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
