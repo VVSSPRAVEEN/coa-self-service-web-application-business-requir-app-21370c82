@@ -249,8 +249,8 @@ services:
       - ALL
     image: ventura-coa-frontend:local
     build:
-      context: ./frontend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: frontend/Dockerfile
       # Cognito build gate (frontend/vite.config.ts) refuses a production vite
       # build without a pool unless the stub is explicit. Stub defaults ON for
       # this deployment; set the pool vars and drop the stub to compile the
@@ -279,7 +279,7 @@ services:
       # vite preview listens on.
       - "${P3_PREVIEW_FRONTEND_PORT:-5173}:5173"
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:5173/ || exit 1"]
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:5173/').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
       interval: 10s
       timeout: 5s
       retries: 18

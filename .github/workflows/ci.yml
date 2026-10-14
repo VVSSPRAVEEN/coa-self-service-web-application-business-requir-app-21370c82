@@ -44,8 +44,6 @@ jobs:
       - name: Install Playwright browsers
         run: cd 'frontend' && if grep -qE '"(playwright|@playwright/test)"' package.json 2>/dev/null; then npx playwright install --with-deps chromium; else echo 'No Playwright dependency; skipping browser install'; fi
       - name: Build / typecheck
-        env:
-          VITE_AUTH_STUB_ENABLED: "true"
         run: cd 'frontend' && npm run build --if-present && npm run typecheck --if-present && npm run compile --if-present
       - name: Unit / package tests
         run: cd 'frontend' && npm test --if-present

@@ -31,6 +31,10 @@
 FROM node:22-bookworm-slim AS build
 
 WORKDIR /app
+# The security scanner requires every stage to end on a non-root USER; the
+# build stage compiles as the image's node user and owns its workspace.
+RUN chown -R node:node /app
+USER node
 
 # Dependencies first, so source-only edits do not invalidate the npm layer.
 COPY frontend/package*.json ./
@@ -80,4 +84,7 @@ EXPOSE 5173
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:' + (process.env.PORT || '5173') + '/').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
 
-CMD ["npm", "run", "preview", "--", "--host", "0.0.0.0", "--port", "5173"]
+COPY frontend/docker-entrypoint.sh /entrypoint.sh
+RUN chmod 0755 /entrypoint.sh
+USER node
+ENTRYPOINT ["/entrypoint.sh"]

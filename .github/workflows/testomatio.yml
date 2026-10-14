@@ -111,7 +111,7 @@ jobs:
       - name: Install dependencies
         run: cd 'e2e' && if [ -f package-lock.json ]; then npm ci; else npm install; fi
       - name: Install Playwright browsers
-        run: cd 'e2e' && npx playwright install --with-deps chromium
+        run: cd 'e2e' && npx playwright install --with-deps
       - name: Record tested commit and deployment identity
         env:
           TESTOMAT_BASE_URL: ${{ github.event.inputs.base_url }}
