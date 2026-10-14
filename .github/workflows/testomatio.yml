@@ -1,0 +1,191 @@
+name: testomatio
+on:
+  workflow_dispatch:
+    inputs:
+      grep:
+        description: "Test selection passed by Testomat.io"
+        required: false
+        default: ""
+      run:
+        description: "Originating Testomat.io run id to report results into"
+        required: false
+        default: ""
+      testomatio:
+        description: "Testomat.io project API key (falls back to the TESTOMATIO_API_KEY repository secret)"
+        required: false
+        default: ""
+      base_url:
+        description: "Deployed base URL for acceptance tests (empty runs the local smoke suite)"
+        required: false
+        default: ""
+      include_failing_control:
+        description: "Add a deliberate failing test to prove failure reporting"
+        required: false
+        default: "false"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: testomatio-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      TESTOMATIO: ${{ secrets.TESTOMATIO_API_KEY != '' && secrets.TESTOMATIO_API_KEY || github.event.inputs.testomatio }}
+      TESTOMATIO_RUN: ${{ github.event.inputs.run }}
+      TESTOMATIO_PROCEED: "1"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip pytest
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+      - name: Run tests (JUnit XML)
+        run: |
+          GREP="${{ github.event.inputs.grep }}"
+          if [ -n "$GREP" ]; then python -m pytest -q -k "$GREP" --junit-xml=test-results/python.xml; else python -m pytest -q --junit-xml=test-results/python.xml; fi
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+      - name: Report unit/integration results to the originating Testomat run
+        if: always()
+        run: |
+          if [ -z "$TESTOMATIO_RUN" ]; then echo "No Testomat run id supplied; skipping report"; exit 0; fi
+          if ls test-results/*.xml >/dev/null 2>&1; then npx -y @testomatio/reporter xml "test-results/*.xml" --lang python; else echo "No JUnit XML produced by this suite; nothing to report"; fi
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: testomat-python
+          path: ./test-results/
+
+  node-frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      TESTOMATIO: ${{ secrets.TESTOMATIO_API_KEY != '' && secrets.TESTOMATIO_API_KEY || github.event.inputs.testomatio }}
+      TESTOMATIO_RUN: ${{ github.event.inputs.run }}
+      TESTOMATIO_PROCEED: "1"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+      - name: Install dependencies
+        run: cd 'frontend' && if [ -f package-lock.json ]; then npm ci; else npm install; fi
+      - name: Unit / package tests
+        run: cd 'frontend' && npm test --if-present
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+      - name: Report unit/package results to the originating Testomat run
+        if: always()
+        run: |
+          if [ -z "$TESTOMATIO_RUN" ]; then echo "No Testomat run id supplied; skipping report"; exit 0; fi
+          if ls frontend/test-results/*.xml >/dev/null 2>&1; then npx -y @testomatio/reporter xml "frontend/test-results/*.xml" --lang js; else echo "No JUnit XML produced by this suite; nothing to report"; fi
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: testomat-node-frontend
+          path: frontend/test-results/
+
+  e2e-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      TESTOMATIO: ${{ secrets.TESTOMATIO_API_KEY != '' && secrets.TESTOMATIO_API_KEY || github.event.inputs.testomatio }}
+      TESTOMATIO_RUN: ${{ github.event.inputs.run }}
+      PLAYWRIGHT_BASE_URL: ${{ github.event.inputs.base_url }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+      - name: Install dependencies
+        run: cd 'e2e' && if [ -f package-lock.json ]; then npm ci; else npm install; fi
+      - name: Install Playwright browsers
+        run: cd 'e2e' && npx playwright install --with-deps chromium
+      - name: Record tested commit and deployment identity
+        run: |
+          mkdir -p test-results
+          printf '{"tested_commit":"%s","base_url":"%s","observed_at":"%s"}\n' "$GITHUB_SHA" "${{ github.event.inputs.base_url }}" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > test-results/deployment-identity.json
+          if [ -n "${{ github.event.inputs.base_url }}" ]; then curl -fsS "${{ github.event.inputs.base_url }}/health" -o test-results/deployed-health.json || echo '{"health":"unreachable"}' > test-results/deployed-health.json; fi
+      - name: Acceptance tests against the deployed URL
+        env:
+          PLAYWRIGHT_JUNIT_OUTPUT_NAME: test-results/e2e.xml
+        run: |
+          GREP="${{ github.event.inputs.grep }}"
+          if [ -n "$GREP" ]; then cd 'e2e' && npx playwright test --reporter=junit --grep "$GREP"; else cd 'e2e' && npx playwright test --reporter=junit; fi
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+      - name: Report acceptance results to the originating Testomat run
+        if: always()
+        run: |
+          if [ -z "$TESTOMATIO_RUN" ]; then echo "No Testomat run id supplied; skipping report"; exit 0; fi
+          if ls e2e/test-results/*.xml >/dev/null 2>&1; then npx -y @testomatio/reporter xml "e2e/test-results/*.xml" --lang js; else echo "No JUnit XML produced by this suite; nothing to report"; fi
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: testomat-e2e-e2e
+          path: e2e/test-results/
+
+  deliberate-failing-control:
+    if: ${{ github.event.inputs.include_failing_control == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      TESTOMATIO: ${{ secrets.TESTOMATIO_API_KEY != '' && secrets.TESTOMATIO_API_KEY || github.event.inputs.testomatio }}
+      TESTOMATIO_RUN: ${{ github.event.inputs.run }}
+      TESTOMATIO_PROCEED: "1"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.11"
+      - name: Deliberate failing test (reporting control)
+        run: |
+          python -m pip install --upgrade pip pytest >/dev/null
+          mkdir -p test-results
+          printf 'def test_deliberate_failing_control():\n    assert False, "deliberate failing-test control"\n' > test_deliberate_control.py
+          python -m pytest -q test_deliberate_control.py --junit-xml=test-results/control.xml
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+      - name: Report control results to the originating Testomat run
+        if: always()
+        run: |
+          if [ -z "$TESTOMATIO_RUN" ]; then echo "No Testomat run id supplied; skipping report"; exit 0; fi
+          if ls test-results/control.xml >/dev/null 2>&1; then npx -y @testomatio/reporter xml "test-results/control.xml" --lang python; else echo "No JUnit XML produced by this suite; nothing to report"; fi
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: testomat-control
+          path: test-results/
+
+  report:
+    needs: [python, node-frontend, e2e-e2e, deliberate-failing-control]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      TESTOMATIO: ${{ secrets.TESTOMATIO_API_KEY != '' && secrets.TESTOMATIO_API_KEY || github.event.inputs.testomatio }}
+      TESTOMATIO_RUN: ${{ github.event.inputs.run }}
+    steps:
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+      - name: Finish the originating Testomat run
+        if: always()
+        run: |
+          if [ -z "$TESTOMATIO_RUN" ]; then echo "No Testomat run id supplied; nothing to finish"; exit 0; fi
+          npx -y @testomatio/reporter finish || echo "::warning::Testomat finish failed; uploaded results are preserved"
+      - name: Preserve upstream gate failures
+        if: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'timed_out') }}
+        run: exit 1

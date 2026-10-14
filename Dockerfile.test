@@ -18,6 +18,10 @@ RUN pip install --upgrade pip \
 
 COPY src/ ./src/
 COPY tests/ ./tests/
+COPY migrations/ ./migrations/
+COPY config/ ./config/
+COPY conftest.py ./conftest.py
+COPY pytest.ini ./pytest.ini
 COPY pyproject.toml ./
 
 RUN useradd --create-home --uid 10001 runner
